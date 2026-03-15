@@ -124,52 +124,32 @@ namespace MakuTweakerNew
             }
         }
 
+                private static readonly string[] Languages =
+        {
+            "en", "ru", "ua", "cz", "de",
+            "es", "pl", "et", "zh", "ja", "tl"
+        };
+        
         private void lang_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (lang.SelectedIndex)
-                {
-                    case 0:
-                        Settings.Default.lang = "en";
-                        break;
-                    case 1:
-                        Settings.Default.lang = "ru";
-                        break;
-                    case 2:
-                        Settings.Default.lang = "ua";
-                        break;
-                    case 3:
-                        Settings.Default.lang = "cz";
-                        break;
-                    case 4:
-                        Settings.Default.lang = "de";
-                        break;
-                    case 5:
-                        Settings.Default.lang = "es";
-                        break;
-                    case 6:
-                        Settings.Default.lang = "pl";
-                        break;
-                    case 7:
-                        Settings.Default.lang = "et";
-                        break;
-                    case 8:
-                        Settings.Default.lang = "zh";
-                        break;
-                    case 9:
-                        Settings.Default.lang = "ja";
-                        break;
-                    case 10:
-                        Settings.Default.lang = "tl";
-                        break;
-                }
-                Settings.Default.langSI = lang.SelectedIndex;
-                Settings.Default.Save();
-                mw.LoadLang(Settings.Default.lang);
-                relang();
-                UpdateLocalizationCredits();
-            }
+            if (!isLoaded)
+                return;
+        
+            int index = lang.SelectedIndex;
+        
+            if (index < 0 || index >= Languages.Length)
+                return;
+        
+            string selectedLang = Languages[index];
+        
+            Settings.Default.lang = selectedLang;
+            Settings.Default.langSI = index;
+            Settings.Default.Save();
+        
+            mw.LoadLang(selectedLang);
+        
+            relang();
+            UpdateLocalizationCredits();
         }
         private void relang()
         {

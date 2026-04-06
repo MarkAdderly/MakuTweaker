@@ -1,644 +1,225 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO.Packaging;
 using System.Linq;
 using System.Media;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using Microsoft.Win32;
 using ModernWpf.Controls;
-using ModernWpf.Media.Animation;
-using Windows.UI.Composition.Desktop;
+using Windows.Management.Deployment;
+using MakuTweakerNew.Properties;
 
 namespace MakuTweakerNew
 {
     public partial class UWP : System.Windows.Controls.Page
     {
-        //Эту вкладку я тоже планирую обновить внешне, и изнутри.
-        //I plan to update this tab as well—both visually and internally.
-
-        MainWindow mw = (MainWindow)Application.Current.MainWindow;
+        private readonly MainWindow mw = (MainWindow)Application.Current.MainWindow;
         private int mode;
         private bool _isChecking;
         private bool _progressShown;
+        private readonly PackageManager _packageManager = new();
 
-        public  UWP()
+        private ToggleSwitch[] Bloat => new[] { u1, u2, u3, u4, u5, u6, u7, u8, u10, u11, u12, u13, u14, u18, u19, u20, u21, u22, u25, u26, u27, u28 };
+        private ToggleSwitch[] Popular => new[] { u15, u16, u17, u9 };
+        private ToggleSwitch[] Necessary => new[] { u23, u24 };
+        private UIElement[] MainControls => new UIElement[] { b, view };
+        private ToggleSwitch[] AllToggles => Bloat.Concat(Popular).Concat(Necessary).ToArray();
+
+        public UWP()
         {
             InitializeComponent();
             LoadLang();
             Loaded += async (_, __) =>
             {
                 _isChecking = true;
-
-                var delayTask = Task.Delay(2000);
                 var checkTask = CheckInstalledUWPAppsAsync(true);
-
-                var finishedTask = await Task.WhenAny(delayTask, checkTask);
-
-                if (finishedTask == delayTask && _isChecking)
-                {
-                    ShowProgressSmooth();
-                }
-
+                if (await Task.WhenAny(Task.Delay(1000), checkTask) != checkTask && _isChecking) ShowProgress(true);
                 await checkTask;
-                if (_progressShown)
-                    HideProgressSmooth();
+                if (_progressShown) ShowProgress(false);
             };
         }
 
-        private void ShowProgressSmooth()
+        private void Fade(UIElement el, double to, double ms)
         {
-            _progressShown = true;
-
-            p.Visibility = Visibility.Visible;
-            t.Visibility = Visibility.Visible;
-
-            p.Opacity = 0;
-            t.Opacity = 0;
-
-            FadeIn(p, 400);
-            FadeIn(t, 400);
-
-            p.IsIndeterminate = true;
+            var anim = new DoubleAnimation(to, TimeSpan.FromMilliseconds(ms))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = to > 0 ? EasingMode.EaseIn : EasingMode.EaseOut }
+            };
+            if (to > 0) el.Visibility = Visibility.Visible;
+            else anim.Completed += (s, e) => el.Visibility = Visibility.Collapsed;
+            el.BeginAnimation(OpacityProperty, anim);
         }
 
-        private void HideProgressSmooth()
+        private void ShowProgress(bool show)
         {
-            FadeOut(p, 300);
-            FadeOut(t, 300);
-
-            _progressShown = false;
+            _progressShown = show;
+            p.Visibility = t.Visibility = show ? Visibility.Visible : Visibility.Hidden;
+            p.IsIndeterminate = show;
+            Fade(p, show ? 1 : 0, 400);
+            Fade(t, show ? 1 : 0, 400);
         }
 
         private async Task CheckInstalledUWPAppsAsync(bool anim)
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var uwp = MainWindow.Localization.LoadLocalization(languageCode, "uwp");
-
-            t.Text = uwp["main"]["chk"];
+            var lang = Settings.Default.lang ?? "en";
+            var uwpStrings = MainWindow.Localization.LoadLocalization(lang, "uwp")["main"];
+            t.Text = uwpStrings["chk"];
             p.Value = 0;
 
-            string[] appIds =
+            var apps = GetAppData();
+            var installed = await Task.Run(() => _packageManager.FindPackagesForUser(string.Empty).Select(x => x.Id.Name).ToHashSet());
+
+            foreach (var app in apps)
             {
-        "Microsoft.ZuneVideo",
-        "Microsoft.ZuneMusic",
-        "Microsoft.MicrosoftStickyNotes",
-        "Microsoft.MixedReality.Portal",
-        "Microsoft.MicrosoftSolitaireCollection",
-        "Microsoft.Messaging",
-        "Microsoft.WindowsFeedbackHub",
-        "microsoft.windowscommunicationsapps",
-        "Microsoft.BingNews",
-        "Microsoft.Microsoft3DViewer",
-        "Microsoft.BingWeather",
-        "Microsoft.549981C3F5F10",
-        "Microsoft.XboxApp",
-        "Microsoft.GetHelp",
-        "Microsoft.WindowsCamera",
-        "Microsoft.WindowsMaps",
-        "Microsoft.Office.OneNote",
-        "Microsoft.YourPhone",
-        "Microsoft.Windows.DevHome",
-        "Clipchamp.Clipchamp",
-        "Microsoft.PowerAutomateDesktop",
-        "Microsoft.Getstarted",
-        "Microsoft.WindowsSoundRecorder",
-        "Microsoft.WindowsStore",
-        "Microsoft.People",
-        "Microsoft.SkypeApp",
-        "Microsoft.WindowsAlarms",
-        "Microsoft.OutlookForWindows"
-    };
-
-            var installedApps = await GetInstalledUWPAppsAsync();
-            foreach (var appId in appIds)
-            {
-                bool isInstalled = installedApps.Contains(appId);
-
-                if (ToggleMap.TryGetValue(appId, out var mappedToggle))
-                {
-                    mappedToggle.IsEnabled = isInstalled;
-
-                    if (mappedToggle != u9 && mappedToggle != u15 && mappedToggle != u16 && mappedToggle != u17)
-                        mappedToggle.IsOn = isInstalled;
-                }
-
-                t.Text = isInstalled
-                    ? $"{uwp["main"]["chk"]}{appId} {uwp["main"]["is"]}"
-                    : $"{uwp["main"]["chk"]}{appId} {uwp["main"]["isnt"]}";
-
+                bool isInstalled = app.Packages.Any(pkg => installed.Contains(pkg));
+                app.Toggle.IsEnabled = isInstalled;
+                if (!Popular.Contains(app.Toggle)) app.Toggle.IsOn = isInstalled;
+                t.Text = $"{uwpStrings["chk"]}{app.Packages[0]}";
                 p.Value++;
-                u23.IsEnabled = true;
-                u24.IsEnabled = true;
             }
 
-            t.Text = uwp["main"]["comp"];
-
+            t.Text = uwpStrings["comp"];
             if (anim)
             {
-                FadeInBloat();
-                FadeOutAll1();
+                AnimateGroup(Bloat, true);
+                AnimateGroup(MainControls, true);
             }
-
             b.IsEnabled = true;
             _isChecking = false;
-            p.IsIndeterminate = false;
         }
 
-        private List<ToggleSwitch> AllToggles => new()
+        private (ToggleSwitch Toggle, string[] Packages, string? Name)[] GetAppData() => new[]
         {
-            u1,u2,u3,u4,u5,u6,u7,u8,u9,u10,
-            u11,u12,u13,u14,u15,u16,u17,u18,
-            u19,u20,u21,u22,u23,u24,u25,u26,u27,u28
+            (u1,  ["Microsoft.MixedReality.Portal"], null),
+            (u2,  ["Microsoft.MicrosoftSolitaireCollection"], null),
+            (u3,  ["Microsoft.Messaging"], null),
+            (u4,  ["Microsoft.549981C3F5F10"], null),
+            (u5,  ["Microsoft.GetHelp"], null),
+            (u6,  ["Microsoft.WindowsFeedbackHub"], null),
+            (u7,  ["Microsoft.Windows.DevHome"], null),
+            (u8,  ["Microsoft.MSPaint", "Microsoft.3DBuilder", "Microsoft.Microsoft3DViewer"], null),
+            (u9,  ["Microsoft.YourPhone"], null),
+            (u10, ["Microsoft.WindowsMaps"], null),
+            (u11, ["Microsoft.PowerAutomateDesktop"], null),
+            (u12, ["Clipchamp.Clipchamp"], null),
+            (u13, ["microsoft.windowscommunicationsapps"], null),
+            (u14, ["Microsoft.Office.OneNote"], null),
+            (u15, ["Microsoft.ZuneMusic"], null),
+            (u16, ["Microsoft.ZuneVideo"], null),
+            (u17, ["Microsoft.WindowsCamera"], null),
+            (u18, ["Microsoft.BingNews"], null),
+            (u19, ["Microsoft.BingWeather"], null),
+            (u20, ["Microsoft.MicrosoftStickyNotes"], null),
+            (u21, ["Microsoft.Getstarted"], null),
+            (u22, ["Microsoft.WindowsSoundRecorder"], null),
+            (u23, new[] { "Microsoft.WindowsStore" }, "Microsoft Store"),
+            (u24, new[] { "Microsoft.XboxApp", "Microsoft.GamingApp", "Microsoft.Xbox.TCUI", "Microsoft.XboxSpeechToTextOverlay", "Microsoft.XboxGameCallableUI" }, "Xbox"),
+            (u25, ["Microsoft.People", "Microsoft.WindowsPeopleExperienceHost"], null),
+            (u26, ["Microsoft.SkypeApp"], null),
+            (u27, ["Microsoft.WindowsAlarms"], null),
+            (u28, ["Microsoft.OutlookForWindows"], null)
         };
-
-        private Dictionary<string, ToggleSwitch> ToggleMap => new()
-        {
-            ["Microsoft.MixedReality.Portal"] = u1,
-            ["Microsoft.MicrosoftSolitaireCollection"] = u2,
-            ["Microsoft.Messaging"] = u3,
-            ["Microsoft.549981C3F5F10"] = u4,
-            ["Microsoft.GetHelp"] = u5,
-            ["Microsoft.WindowsFeedbackHub"] = u6,
-            ["Microsoft.Windows.DevHome"] = u7,
-            ["Microsoft.Microsoft3DViewer"] = u8,
-            ["Microsoft.YourPhone"] = u9,
-            ["Microsoft.WindowsMaps"] = u10,
-            ["Microsoft.PowerAutomateDesktop"] = u11,
-            ["Clipchamp.Clipchamp"] = u12,
-            ["microsoft.windowscommunicationsapps"] = u13,
-            ["Microsoft.Office.OneNote"] = u14,
-            ["Microsoft.ZuneMusic"] = u15,
-            ["Microsoft.ZuneVideo"] = u16,
-            ["Microsoft.WindowsCamera"] = u17,
-            ["Microsoft.BingNews"] = u18,
-            ["Microsoft.BingWeather"] = u19,
-            ["Microsoft.MicrosoftStickyNotes"] = u20,
-            ["Microsoft.Getstarted"] = u21,
-            ["Microsoft.WindowsSoundRecorder"] = u22,
-            ["Microsoft.People"] = u25,
-            ["Microsoft.SkypeApp"] = u26,
-            ["Microsoft.WindowsAlarms"] = u27,
-            ["Microsoft.OutlookForWindows"] = u28
-        };
-
-        private async Task<HashSet<string>> GetInstalledUWPAppsAsync()
-        {
-            return await Task.Run(() =>
-            {
-                var result = new HashSet<string>();
-
-                try
-                {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = "powershell.exe",
-                        Arguments = "-Command \"Get-AppxPackage | Select -ExpandProperty Name\"",
-                        RedirectStandardOutput = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-
-                    using var process = Process.Start(psi);
-                    string output = process.StandardOutput.ReadToEnd();
-                    process.WaitForExit();
-
-                    foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
-                        result.Add(line.Trim());
-                }
-                catch (Exception ex)
-                {
-                    Application.Current.Dispatcher.Invoke(() =>
-                        System.Windows.MessageBox.Show($"PowerShell error: {ex.Message}")
-                    );
-                }
-
-                return result;
-            });
-        }
-
-        private async Task RemovePackageAsync(string packageName)
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = $"-Command \"Get-AppxPackage -Name '{packageName}' | Remove-AppxPackage\"",
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(psi);
-            await process.WaitForExitAsync();
-        }
-
-        private void FadeIn(UIElement element, double durationSeconds)
-        {
-            var fadeInAnimation = new DoubleAnimation
-            {
-                From = 0,
-                To = 1.0,
-                Duration = TimeSpan.FromMilliseconds(durationSeconds),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-            };
-            element.BeginAnimation(OpacityProperty, fadeInAnimation);
-        }
-
-        private void FadeOut(UIElement element, double durationSeconds)
-        {
-            var fadeOutAnimation = new DoubleAnimation
-            {
-                From = 1.0,
-                To = 0,
-                Duration = TimeSpan.FromMilliseconds(durationSeconds),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            };
-            element.BeginAnimation(OpacityProperty, fadeOutAnimation);
-        }
-
-        private List<UIElement> PopularElements => new() { u15, u16, u17, u9 };
-        private void FadeInPopular()
-        {
-            foreach (var el in PopularElements)
-            {
-                el.Visibility = Visibility.Visible;
-                FadeIn(el, 300);
-            }
-        }
-
-        private async Task FadeOutPopularAsync()
-        {
-            foreach (var el in PopularElements)
-                FadeOut(el, 300);
-
-            await Task.Delay(300);
-
-            foreach (var el in PopularElements)
-                el.Visibility = Visibility.Collapsed;
-        }
-
-        private void FadeInAll1()
-        {
-            foreach (var toggle in AllToggles)
-                FadeIn(toggle, 300);
-
-            FadeIn(b, 300);
-            FadeIn(view, 300);
-        }
-
-        private async void FadeOutAll1()
-        {
-            FadeOut(p, 300);
-            FadeOut(t, 300);
-            await Task.Delay(300);
-        }
-        private void FadeInAll2()
-        {
-            FadeIn(p, 300);
-            FadeIn(t, 300);
-        }
-
-        private void FadeOutAll2()
-        {
-            foreach (var toggle in AllToggles)
-            {
-                FadeOut(toggle, 300);
-                toggle.IsEnabled = false;
-            }
-
-            FadeOut(b, 300);
-            FadeOut(view, 300);
-            b.IsEnabled = false;
-            view.IsEnabled = false;
-        }
 
         private async void b_Click(object sender, RoutedEventArgs e)
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var uwp = MainWindow.Localization.LoadLocalization(languageCode, "uwp");
+            var lang = Settings.Default.lang ?? "en";
+            var uwpStrings = MainWindow.Localization.LoadLocalization(lang, "uwp");
+            var targetShortNames = new List<string>();
 
-            int count = 0;
-
-            foreach (var toggle in AllToggles)
+            foreach (var app in GetAppData())
             {
-                if (toggle.IsOn)
+                if (app.Toggle.IsOn)
                 {
-                    if (toggle == u8)       
-                        count += 3;
-                    else if(toggle == u23)
+                    if (app.Name != null)
                     {
-                        ILOVEMAKUTWEAKERDialog dialog = new ILOVEMAKUTWEAKERDialog("Microsoft Store");
-                        var result = await dialog.ShowAsync();
-                        int resulty = await dialog.TaskCompletionSource.Task;
-                        if(resulty == 0)
-                        {
-                            return;
-                        }
-                        else
-                        {
-                            count++;
-                        }
+                        var diag = new ILOVEMAKUTWEAKERDialog(app.Name);
+                        await diag.ShowAsync();
+                        if (await diag.TaskCompletionSource.Task == 0) return;
                     }
-                    else if (toggle == u24)
-                    {
-                        ILOVEMAKUTWEAKERDialog dialog = new ILOVEMAKUTWEAKERDialog("Xbox");
-                        var result = await dialog.ShowAsync();
-                        int resulty = await dialog.TaskCompletionSource.Task;
-                        if (resulty == 0)
-                        {
-                            return;
-                        }
-                        else
-                        {
-                            count += 5;
-                        }
-                    }
-                    else if (toggle == u25)       
-                        count += 2;
-                    else
-                        count++;       
+                    targetShortNames.AddRange(app.Packages);
                 }
             }
 
-            if (count > 0)
+            if (targetShortNames.Count == 0) { mw.ChSt(uwpStrings["status"]["noapps"]); return; }
+
+            ShowProgress(true);
+            p.IsIndeterminate = false;
+            p.Maximum = targetShortNames.Count;
+            p.Value = 0;
+            mw.Category.IsEnabled = mw.ABCB.IsEnabled = false;
+
+            AnimateGroup(AllToggles, false);
+            AnimateGroup(MainControls, false);
+
+            var allInstalled = await Task.Run(() => _packageManager.FindPackagesForUser(string.Empty).ToList());
+
+            foreach (var shortName in targetShortNames)
             {
-                if (!_progressShown)
-                {
-                    ShowProgressSmooth();
-                }
-                p.IsIndeterminate = false;
-                t.Text = $"{uwp["status"]["started"]} 0/{count}";
-                mw.Category.IsEnabled = false;
-                mw.ABCB.IsEnabled = false;
-                p.Maximum = count;
-                p.Value = 0;
-                FadeInAll2();
-                switch (mode)
-                {
-                    case 0:
-                        FadeOutBloat();
-                        break;
-                    case 1:
-                        FadeOutBloat();
-                        await FadeOutPopularAsync();
-                        break;
-                    case 2:
-                        FadeInAll1();
-                        FadeOutAll2();
-                        break;
-                        
-                }
-                await Task.Delay(300);
-                b.Visibility = Visibility.Collapsed;
+                t.Text = $"{uwpStrings["status"]["started"]} {p.Value}/{targetShortNames.Count}";
+                var foundPackages = allInstalled.Where(x => x.Id.Name.Equals(shortName, StringComparison.OrdinalIgnoreCase));
 
-                var appPackages = new (ToggleSwitch toggle, string packageName)[]
+                foreach (var pkg in foundPackages)
                 {
-            (u1, "Microsoft.MixedReality.Portal"),
-            (u2, "Microsoft.MicrosoftSolitaireCollection"),
-            (u3, "Microsoft.Messaging"),
-            (u4, "Microsoft.549981C3F5F10"),
-            (u5, "Microsoft.GetHelp"),
-            (u6, "Microsoft.WindowsFeedbackHub"),
-            (u7, "Microsoft.Windows.DevHome"),
-            (u8, "Microsoft.MSPaint"),
-            (u8, "Microsoft.3DBuilder"),
-            (u8, "Microsoft.Microsoft3DViewer"),
-            (u9, "Microsoft.YourPhone"),
-            (u10, "Microsoft.WindowsMaps"),
-            (u11, "Microsoft.PowerAutomateDesktop"),
-            (u12, "Clipchamp.Clipchamp"),
-            (u13, "microsoft.windowscommunicationsapps"),
-            (u14, "Microsoft.Office.OneNote"),
-            (u15, "Microsoft.ZuneMusic"),
-            (u16, "Microsoft.ZuneVideo"),
-            (u17, "Microsoft.WindowsCamera"),
-            (u18, "Microsoft.BingNews"),
-            (u19, "Microsoft.BingWeather"),
-            (u20, "Microsoft.MicrosoftStickyNotes"),
-            (u21, "Microsoft.Getstarted"),
-            (u22, "Microsoft.WindowsSoundRecorder"),
-            (u23, "Microsoft.WindowsStore"),
-            (u24, "Microsoft.XboxApp"),
-            (u24, "Microsoft.GamingApp"),
-            (u24, "Microsoft.Xbox.TCUI"),
-            (u24, "Microsoft.XboxSpeechToTextOverlay"),
-            (u24, "Microsoft.XboxGameCallableUI"),
-            (u25, "Microsoft.People"),
-            (u25, "Microsoft.Windows.PeopleExperienceHost"),
-            (u26, "Microsoft.SkypeApp"),
-            (u27, "Microsoft.WindowsAlarms"),
-            (u28, "Microsoft.OutlookForWindows"),
-                };
-
-                foreach (var (toggle, packageName) in appPackages)
-                {
-                    if (toggle.IsOn)
+                    try
                     {
-                        await RemovePackageAsync(packageName);
-                        p.Value++;
-                        t.Text = $"{uwp["status"]["started"]} {p.Value}/{count}";
+                        await _packageManager.RemovePackageAsync(pkg.Id.FullName).AsTask();
                     }
+                    catch { /* ... */ }
                 }
-                p.Value = 0;
-                p.Maximum = 27;
-                view.SelectedIndex = 0;
-                FadeInBloat();
-                FadeOutAll1();
-                SystemSounds.Asterisk.Play();
-                mw.ChSt(uwp["status"]["complete"]);
-                mw.Category.IsEnabled = true;
-                mw.ABCB.IsEnabled = true;
-                foreach (var toggle in AllToggles)
-                {
-                    toggle.IsOn = false;
-                    toggle.IsEnabled = false;
-                }
-                b.IsEnabled = false;
-                b.Visibility = Visibility.Visible;
-                CheckInstalledUWPAppsAsync(false);
+                p.Value++;
             }
-            else
-            {
-                mw.ChSt(uwp["status"]["noapps"]);
-            }
+
+            SystemSounds.Asterisk.Play();
+            mw.ChSt(uwpStrings["status"]["complete"]);
+            mw.Category.IsEnabled = mw.ABCB.IsEnabled = true;
+            foreach (var ts in AllToggles) ts.IsOn = ts.IsEnabled = false;
+
+            view.SelectedIndex = 0;
+            _ = CheckInstalledUWPAppsAsync(true);
         }
 
-        private void FadeInNecessary()
+        private void AnimateGroup(IEnumerable<UIElement> group, bool show)
         {
-            u23.Visibility = Visibility.Visible;
-            u24.Visibility = Visibility.Visible;
-            FadeIn(u23, 300);
-            FadeIn(u24, 300);
+            foreach (var el in group) Fade(el, show ? 1 : 0, 300);
         }
 
-        private async Task FadeOutNecessary()
+        private async void view_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            FadeOut(u23, 300);
-            FadeOut(u24, 300);
+            if (!IsLoaded) return;
+            view.IsEnabled = false;
+            if (view.SelectedIndex == 0) { AnimateGroup(Popular, false); AnimateGroup(Necessary, false); }
+            else if (view.SelectedIndex == 1) { AnimateGroup(Popular, true); AnimateGroup(Necessary, false); }
+            else { AnimateGroup(Popular, true); AnimateGroup(Necessary, true); }
+            mode = view.SelectedIndex;
             await Task.Delay(300);
-            u23.Visibility = Visibility.Collapsed;
-            u24.Visibility = Visibility.Collapsed;
+            view.IsEnabled = true;
         }
 
-        private void FadeInBloat()
-        {
-            FadeIn(u1, 300);
-            FadeIn(u2, 300);
-            FadeIn(u3, 300);
-            FadeIn(u4, 300);
-            FadeIn(u5, 300);
-            FadeIn(u6, 300);
-            FadeIn(u7, 300);
-            FadeIn(u8, 300);
-            FadeIn(u10, 300);
-            FadeIn(u11, 300);
-            FadeIn(u12, 300);
-            FadeIn(u13, 300);
-            FadeIn(u14, 300);
-            FadeIn(u18, 300);
-            FadeIn(u19, 300);
-            FadeIn(u20, 300);
-            FadeIn(u21, 300);
-            FadeIn(u22, 300);
-            FadeIn(u25, 300);
-            FadeIn(u26, 300);
-            FadeIn(u27, 300);
-            FadeIn(u28, 300);
-            FadeIn(b, 300);
-            FadeIn(view, 300);
-        }
-        private void FadeOutBloat()
-        {
-            FadeOut(u1, 300);
-            FadeOut(u2, 300);
-            FadeOut(u3, 300);
-            FadeOut(u4, 300);
-            FadeOut(u5, 300);
-            FadeOut(u6, 300);
-            FadeOut(u7, 300);
-            FadeOut(u8, 300);
-            FadeOut(u10, 300);
-            FadeOut(u11, 300);
-            FadeOut(u12, 300);
-            FadeOut(u13, 300);
-            FadeOut(u14, 300);
-            FadeOut(u18, 300);
-            FadeOut(u19, 300);
-            FadeOut(u20, 300);
-            FadeOut(u21, 300);
-            FadeOut(u22, 300);
-            FadeOut(u25, 300);
-            FadeOut(u26, 300);
-            FadeOut(u27, 300);
-            FadeOut(u28, 300);
-            FadeOut(b, 300);
-            FadeOut(view, 300);
-        }
-
-        private async void view_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            switch (view.SelectedIndex)
-            {
-                case 0:
-                    if(mode == 1)
-                    {
-                        await FadeOutPopularAsync();
-                    }
-                    if (mode == 2)
-                    {
-                        await FadeOutPopularAsync();
-                        FadeOutNecessary();
-                    }
-                    mode = 0;
-                    view.IsEnabled = false;
-                    await Task.Delay(300);
-                    view.IsEnabled = true;
-                    break;
-                case 1:
-                    if(mode == 0)
-                    {
-                        FadeInPopular();
-                    }
-                    else if(mode == 2)
-                    {
-                        FadeOutNecessary();
-                    }
-                    mode = 1;
-                    view.IsEnabled = false;
-                    await Task.Delay(300);
-                    view.IsEnabled = true;
-                    break;
-                case 2:
-                    if(mode == 0)
-                    {
-                        FadeInNecessary();
-                        FadeInPopular();
-                    }
-                    else if(mode == 1)
-                    {
-                        FadeInNecessary();
-                    }
-                    mode = 2;
-                    view.IsEnabled = false;
-                    await Task.Delay(300);
-                    view.IsEnabled = true;
-                    break;
-            }
-        }
         private void LoadLang()
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var uwp = MainWindow.Localization.LoadLocalization(languageCode, "uwp");
-            label.Text = uwp["main"]["label"];
-            info1.Text = uwp["main"]["info1"];
-            info2.Text = uwp["main"]["info2"];
+            var lang = Settings.Default.lang ?? "en";
+            var uwp = MainWindow.Localization.LoadLocalization(lang, "uwp")["main"];
+            label.Text = uwp["label"];
+            info1.Text = uwp["info1"];
+            info2.Text = uwp["info2"];
+            mode1.Content = uwp["mode1"];
+            mode2.Content = uwp["mode2"];
+            mode3.Content = uwp["mode3"];
+            b.Content = uwp["b"];
+            t.Text = uwp["chk"];
 
-            u3.OffContent = uwp["main"]["u3"];
-            u5.OffContent = uwp["main"]["u5"];
-            u6.OffContent = uwp["main"]["u6"];
-            u9.OffContent = uwp["main"]["u9"];
-            u10.OffContent = uwp["main"]["u10"];
-            u13.OffContent = uwp["main"]["u13"];
-            u15.OffContent = uwp["main"]["u15"];
-            u16.OffContent = uwp["main"]["u16"];
-            u17.OffContent = uwp["main"]["u17"];
-            u18.OffContent = uwp["main"]["u18"];
-            u19.OffContent = uwp["main"]["u19"];
-            u20.OffContent = uwp["main"]["u20"];
-            u22.OffContent = uwp["main"]["u22"];
-            u27.OffContent = uwp["main"]["u27"];
+            var map = new (ToggleSwitch s, string k)[] {
+                (u3, "u3"), (u5, "u5"), (u6, "u6"),
+                (u9, "u9"), (u10, "u10"), (u13, "u13"),
+                (u15, "u15"), (u16, "u16"), (u17, "u17"),
+                (u18, "u18"), (u19, "u19"), (u20, "u20"),
+                (u22, "u22"), (u27, "u27")
+            };
 
-            u3.OnContent = uwp["main"]["u3"];
-            u5.OnContent = uwp["main"]["u5"];
-            u6.OnContent = uwp["main"]["u6"];
-            u9.OnContent = uwp["main"]["u9"];
-            u10.OnContent = uwp["main"]["u10"];
-            u13.OnContent = uwp["main"]["u13"];
-            u15.OnContent = uwp["main"]["u15"];
-            u16.OnContent = uwp["main"]["u16"];
-            u17.OnContent = uwp["main"]["u17"];
-            u18.OnContent = uwp["main"]["u18"];
-            u19.OnContent = uwp["main"]["u19"];
-            u20.OnContent = uwp["main"]["u20"];
-            u22.OnContent = uwp["main"]["u22"];
-            u27.OnContent = uwp["main"]["u27"];
-
-            mode1.Content = uwp["main"]["mode1"];
-            mode2.Content = uwp["main"]["mode2"];
-            mode3.Content = uwp["main"]["mode3"];
-
-            b.Content = uwp["main"]["b"];
-            t.Text = uwp["main"]["chk"];
+            foreach (var item in map)
+            {
+                item.s.OnContent = item.s.OffContent = uwp[item.k];
+            }
         }
     }
 }

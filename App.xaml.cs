@@ -21,7 +21,11 @@ namespace MakuTweakerNew
         {
             this.DispatcherUnhandledException += OnDispatcherUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
-            TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+            TaskScheduler.UnobservedTaskException += (s, e) =>
+            {
+                HandleCrash("Unhandled Task Exception", e.Exception, 3);
+                e.SetObserved();
+            };
         }
 
 
@@ -36,11 +40,6 @@ namespace MakuTweakerNew
             HandleCrash("Unhandled Critical Exception", e.ExceptionObject as Exception, 1);
         }
 
-        private void OnUnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
-        {
-            HandleCrash("Unhandled Task Exception", e.Exception, 3);
-            e.SetObserved();
-        }
 
         private void HandleCrash(string errorType, Exception? ex, int exitCode)
         {

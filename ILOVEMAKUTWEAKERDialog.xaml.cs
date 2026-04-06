@@ -1,17 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
 using System.Windows.Documents;
-using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using MakuTweakerNew.Properties;
 using ModernWpf.Controls;
 
@@ -19,65 +10,42 @@ namespace MakuTweakerNew
 {
     public partial class ILOVEMAKUTWEAKERDialog : ContentDialog
     {
-        public TaskCompletionSource<int> TaskCompletionSource { get; private set; }
+        public TaskCompletionSource<int> TaskCompletionSource { get; } = new();
+
         public ILOVEMAKUTWEAKERDialog(string app)
         {
             InitializeComponent();
-            var languageCode = Settings.Default.lang ?? "en";
-            var uwp = MainWindow.Localization.LoadLocalization(languageCode, "uwp");
-            Run run1 = new Run
-            {
-                Text = $"{uwp["main"]["suredialogT1"]} {app} {uwp["main"]["suredialogT2"]}\n",
-                FontSize = 14,
-                FontFamily = new System.Windows.Media.FontFamily("Segoe UI")
-            };
-            Run run2 = new Run
-            {
-                Text = $"{uwp["main"]["suredialogT3"]}\n",
-                FontSize = 14,
-                FontFamily = new System.Windows.Media.FontFamily("Segoe UI")
-            };
-            Run run3 = new Run
-            {
-                Text = $"{uwp["main"]["suredialogT4"]}",
-                FontSize = 18,
-                FontFamily = new System.Windows.Media.FontFamily("Segoe UI Semibold")
-            };
-            this.CloseButtonText = uwp["main"]["suredialogNS"];
-            textBlock.Inlines.Add(run1);
-            textBlock.Inlines.Add(new LineBreak());
-            textBlock.Inlines.Add(run2);
-            textBlock.Inlines.Add(new LineBreak());
-            textBlock.Inlines.Add(run3);
+            var lang = Settings.Default.lang ?? "en";
+            var uwp = MainWindow.Localization.LoadLocalization(lang, "uwp")["main"];
+
+            CloseButtonText = uwp["suredialogNS"];
             textBlock.TextAlignment = TextAlignment.Left;
-            this.TaskCompletionSource = new TaskCompletionSource<int>();
+
+            var segoe = new FontFamily("Segoe UI");
+            var segoeBold = new FontFamily("Segoe UI Semibold");
+
+            textBlock.Inlines.Add(new Run($"{uwp["suredialogT1"]} {app} {uwp["suredialogT2"]}\n") { FontSize = 14, FontFamily = segoe });
+            textBlock.Inlines.Add(new LineBreak());
+            textBlock.Inlines.Add(new Run($"{uwp["suredialogT3"]}\n") { FontSize = 14, FontFamily = segoe });
+            textBlock.Inlines.Add(new LineBreak());
+            textBlock.Inlines.Add(new Run(uwp["suredialogT4"]) { FontSize = 18, FontFamily = segoeBold });
         }
 
         private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if(ILOVEMAKUTWEAKER.Text == "ILOVEMAKUTWEAKER")
-            {
-                this.PrimaryButtonText = "OK";
-            }
-            else
-            {
-                this.PrimaryButtonText = string.Empty;
-            }
+            PrimaryButtonText = ILOVEMAKUTWEAKER.Text == "ILOVEMAKUTWEAKER" ? "OK" : string.Empty;
         }
+
         private void CloseDialog(int result)
         {
             TaskCompletionSource.SetResult(result);
-            this.Hide();
+            Hide();
         }
 
         private void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
-        {
-            CloseDialog(1);
-        }
+            => CloseDialog(1);
 
         private void ContentDialog_CloseButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
-        {
-            CloseDialog(0);
-        }
+            => CloseDialog(0);
     }
 }

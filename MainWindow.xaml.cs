@@ -2,7 +2,6 @@
 using MakuTweakerNew.Properties;
 using MicaWPF.Controls;
 using MicaWPF.Core.Enums;
-using MicaWPF.Core.Helpers;
 using MicaWPF.Core.Services;
 using Microsoft.Win32;
 using ModernWpf;
@@ -14,39 +13,28 @@ using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Threading;
-using Windows.Data;
-using Windows.Data.Xml.Dom;
-using Windows.Globalization.Fonts;
-using Windows.UI;
-using Windows.UI.Notifications;
-using static System.Runtime.InteropServices.JavaScript.JSType;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.Window;
 
 namespace MakuTweakerNew
 {
     public partial class MainWindow : MicaWindow
     {
-		private NavigationTransitionInfo _transitionInfo = null;
-        private DispatcherTimer ExpRestart;
+        private NavigationTransitionInfo? _transitionInfo;
+        private DispatcherTimer ExpRestart = null!;
+        private bool isAnimating = false;
+
         public static class Localization
         {
             public static Dictionary<string, Dictionary<string, string>> LoadLocalization(string language, string category)
             {
-                var localizationFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "loc");
+                var locFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "loc");
+                var enFile = Path.Combine(locFolder, "en.json");
 
-                var enFile = Path.Combine(localizationFolder, "en.json");
                 if (!File.Exists(enFile))
                 {
                     throw new FileNotFoundException($"Cannot find the base en.json localization file.\nPlease reinstall MakuTweaker.");
@@ -55,344 +43,179 @@ namespace MakuTweakerNew
                 var enContent = File.ReadAllText(enFile);
                 var enData = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, Dictionary<string, Dictionary<string, string>>>>>(enContent);
 
-                if (!enData.ContainsKey("categories") || !enData["categories"].ContainsKey(category))
+                if (enData == null || !enData.ContainsKey("categories") || !enData["categories"].ContainsKey(category))
                 {
                     throw new KeyNotFoundException($"Cannot find a \"{category}\" category in the base en.json localization file.");
                 }
 
-                var resultCategory = enData["categories"][category];
-                if (language == "en")
-                {
-                    return resultCategory;
-                }
+                var result = enData["categories"][category];
 
-                var targetFile = Path.Combine(localizationFolder, $"{language}.json");
+                if (language == "en") return result;
+
+                var targetFile = Path.Combine(locFolder, $"{language}.json");
                 if (!File.Exists(targetFile))
                 {
-                    Properties.Settings.Default.lang = "en";
-                    Properties.Settings.Default.Save();
+                    Settings.Default.lang = "en";
+                    Settings.Default.Save();
                     throw new FileNotFoundException($"Cannot find a {targetFile} localization file.\nPlease reinstall MakuTweaker.\nLanguage has been changed to English.");
                 }
 
-                var targetContent = File.ReadAllText(targetFile);
-                var targetData = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, Dictionary<string, Dictionary<string, string>>>>>(targetContent);
+                var targetData = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, Dictionary<string, Dictionary<string, string>>>>>(File.ReadAllText(targetFile));
 
-                if (targetData.ContainsKey("categories") && targetData["categories"].ContainsKey(category))
+                if (targetData != null && targetData.ContainsKey("categories") && targetData["categories"].ContainsKey(category))
                 {
                     var targetCategory = targetData["categories"][category];
-
-                    foreach (var subCategory in targetCategory)
+                    foreach (var sub in targetCategory)
                     {
-                        var subCategoryName = subCategory.Key;
-
-                        if (!resultCategory.ContainsKey(subCategoryName))
-                        {
-                            resultCategory[subCategoryName] = new Dictionary<string, string>();
-                        }
-                        foreach (var translation in subCategory.Value)
-                        {
-                            resultCategory[subCategoryName][translation.Key] = translation.Value;
-                        }
+                        if (!result.ContainsKey(sub.Key)) result[sub.Key] = new Dictionary<string, string>();
+                        foreach (var trans in sub.Value) result[sub.Key][trans.Key] = trans.Value;
                     }
                 }
 
-                return resultCategory;
+                return result;
             }
         }
 
         public MainWindow()
         {
             InitializeComponent();
-            if(checkWinVer() < 14393)
+            CheckOsVersion();
+            ExpTimer();
+            HandleFirstRun();
+            LoadLang(Settings.Default.lang);
+            _ = CheckForUpd();
+        }
+
+        private void CheckOsVersion()
+        {
+            if (WinHelper.GetWindowsBuild() < 14393)
             {
-                System.Windows.Forms.DialogResult old = System.Windows.Forms.MessageBox.Show("Your version of Windows is not supported. To use MakuTweaker, update your system to Windows 10 1607 or higher. Do you want to download MakuTweaker Legacy Windows Edition?\n\nВаша версия Windows неподдерживается. Для использования MakuTweaker, обновитесь до Windows 10 1607 или выше. Вы хотите скачать MakuTweaker для старых Windows?", "MakuTweaker", System.Windows.Forms.MessageBoxButtons.YesNo, System.Windows.Forms.MessageBoxIcon.Error);
-                if(old == System.Windows.Forms.DialogResult.Yes)
+                var res = System.Windows.Forms.MessageBox.Show("Your version of Windows is not supported. To use MakuTweaker, update your system to Windows 10 1607 or higher. Do you want to download MakuTweaker Legacy Windows Edition?\n\nВаша версия Windows неподдерживается. Для использования MakuTweaker, обновитесь до Windows 10 1607 или выше. Вы хотите скачать MakuTweaker для старых Windows?", "MakuTweaker", System.Windows.Forms.MessageBoxButtons.YesNo, System.Windows.Forms.MessageBoxIcon.Error);
+                if (res == System.Windows.Forms.DialogResult.Yes)
                 {
                     Process.Start(new ProcessStartInfo("https://adderly.top/mt") { UseShellExecute = true });
                 }
                 Application.Current.Shutdown();
             }
-            string buildVersion;
-            var assembly = Assembly.GetExecutingAssembly();
-            using (Stream stream = assembly.GetManifestResourceStream("MakuTweakerNew.BuildLab.txt"))
-            using (StreamReader reader = new StreamReader(stream))
+        }
+
+        private void HandleFirstRun()
+        {
+            if (!Settings.Default.firRun)
             {
-                buildVersion = reader.ReadToEnd();
+                if (Enum.TryParse<WindowsTheme>(Settings.Default.theme, out var parsed)) ApplyTheme(parsed);
+                else ApplyTheme(MicaWPFServiceUtility.ThemeService.CurrentTheme);
+                return;
             }
 
-            ExpTimer();
-            if (Properties.Settings.Default.firRun)
+            string sys = CultureInfo.CurrentCulture.Name.ToLower();
+            var (code, id) = sys switch
             {
-                string systemLanguage = CultureInfo.CurrentCulture.Name;
-                switch (systemLanguage)
-                {
-                    case string lang when lang.StartsWith("uk-"):
-                        Properties.Settings.Default.lang = "ua";
-                        Settings.Default.langSI = 2;
-                        break;
-                    case string lang when lang.StartsWith("ru-"):
-                        Properties.Settings.Default.lang = "ru";
-                        Settings.Default.langSI = 1;
-                        break;
-                    case string lang when lang.StartsWith("cs-"):
-                        Properties.Settings.Default.lang = "cz";
-                        Settings.Default.langSI = 3;
-                        break;
-                    case string lang when lang.StartsWith("de-"):
-                        Properties.Settings.Default.lang = "de";
-                        Settings.Default.langSI = 4;
-                        break;
-                    case string lang when lang.StartsWith("es-"):
-                        Properties.Settings.Default.lang = "es";
-                        Settings.Default.langSI = 5;
-                        break;
-                    case string lang when lang.StartsWith("pl-"):
-                        Properties.Settings.Default.lang = "pl";
-                        Settings.Default.langSI = 6;
-                        break;
-                    case string lang when lang.StartsWith("et-"):
-                        Properties.Settings.Default.lang = "et";
-                        Settings.Default.langSI = 7;
-                        break;
-                    case string lang when lang.ToLower().StartsWith("zh"):
-                        Properties.Settings.Default.lang = "zh";
-                        Settings.Default.langSI = 8;
-                        break;
-                    case string lang when lang.ToLower().StartsWith("ja"):
-                        Properties.Settings.Default.lang = "ja";
-                        Settings.Default.langSI = 9;
-                        break;
-                    case string lang when lang.ToLower().StartsWith("tl"):
-                        Properties.Settings.Default.lang = "tl";
-                        Settings.Default.langSI = 10;
-                        break;
-                    case string lang when lang.StartsWith("en-"):
-                        Properties.Settings.Default.lang = "en";
-                        Settings.Default.langSI = 0;
-                        break;
-                    default:
-                        Properties.Settings.Default.lang = "en";
-                        Settings.Default.langSI = 0;
-                        break;
-                }
-                Settings.Default.firRun = false;
-                var currentSystemTheme = MicaWPFServiceUtility.ThemeService.CurrentTheme;
-                string themeToSave = currentSystemTheme == WindowsTheme.Dark ? "Dark" : "Light";
-                Properties.Settings.Default.theme = themeToSave;
+                _ when sys.StartsWith("uk-") => ("ua", 2),
+                _ when sys.StartsWith("ru-") => ("ru", 1),
+                _ when sys.StartsWith("cs-") => ("cz", 3),
+                _ when sys.StartsWith("de-") => ("de", 4),
+                _ when sys.StartsWith("es-") => ("es", 5),
+                _ when sys.StartsWith("pl-") => ("pl", 6),
+                _ when sys.StartsWith("et-") => ("et", 7),
+                _ when sys.StartsWith("zh") => ("zh", 8),
+                _ when sys.StartsWith("ja") => ("ja", 9),
+                _ when sys.StartsWith("tl") => ("tl", 10),
+                _ when sys.StartsWith("en-") => ("en", 0),
+                _ => ("en", 0)
+            };
 
-                Properties.Settings.Default.firRun = false;
-                Properties.Settings.Default.Save();
-                ApplyTheme(currentSystemTheme);
-                Properties.Settings.Default.Save();
-            }
-            else
-            {
-                string themeString = Properties.Settings.Default.theme;
-
-                if (string.IsNullOrEmpty(themeString) || themeString == "Auto")
-                {
-                    var systemTheme = MicaWPFServiceUtility.ThemeService.CurrentTheme;
-                    ApplyTheme(systemTheme);
-                    Properties.Settings.Default.theme = systemTheme == WindowsTheme.Dark ? "Dark" : "Light";
-                    Properties.Settings.Default.Save();
-                }
-                else if (Enum.TryParse<WindowsTheme>(themeString, out var parsedTheme))
-                {
-                    ApplyTheme(parsedTheme);
-                }
-                else
-                {
-                    ApplyTheme(MicaWPFServiceUtility.ThemeService.CurrentTheme);
-                }
-            }
-
-            LoadLang(Properties.Settings.Default.lang);
-            CheckForUpd();
-
+            Settings.Default.lang = code;
+            Settings.Default.langSI = id;
+            var theme = MicaWPFServiceUtility.ThemeService.CurrentTheme;
+            Settings.Default.theme = theme == WindowsTheme.Dark ? "Dark" : "Light";
+            Settings.Default.firRun = false;
+            Settings.Default.Save();
+            ApplyTheme(theme);
         }
 
         private void ApplyTheme(WindowsTheme theme)
         {
             MicaWPFServiceUtility.ThemeService.ChangeTheme(theme);
-
-            if (theme == WindowsTheme.Dark)
-            {
-                ThemeManager.Current.ApplicationTheme = ApplicationTheme.Dark;
-                this.Foreground = System.Windows.Media.Brushes.White;
-                this.Separator.Stroke = System.Windows.Media.Brushes.White;
-            }
-            else
-            {
-                ThemeManager.Current.ApplicationTheme = ApplicationTheme.Light;
-                this.Foreground = System.Windows.Media.Brushes.Black;
-                this.Separator.Stroke = System.Windows.Media.Brushes.Black;
-            }
-        }
-
-        private void ExpTimer()
-        {
-            ExpRestart = new DispatcherTimer();
-            ExpRestart.Interval = TimeSpan.FromMilliseconds(2000);
-            ExpRestart.Tick += ExpRestart_Tick;
+            bool isDark = theme == WindowsTheme.Dark;
+            ThemeManager.Current.ApplicationTheme = isDark ? ApplicationTheme.Dark : ApplicationTheme.Light;
+            Foreground = isDark ? System.Windows.Media.Brushes.White : System.Windows.Media.Brushes.Black;
+            Separator.Stroke = Foreground;
         }
 
         private void ListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (Category.SelectedIndex == -1) return;
 
-            _transitionInfo = new EntranceNavigationTransitionInfo();
-            switch (Category.SelectedIndex)
-            {
-                case 0: MainFrame.Navigate(typeof(Explorer), null, _transitionInfo); break;
-                case 1: MainFrame.Navigate(typeof(WindowsUpdate), null, _transitionInfo); break;
-                case 2: MainFrame.Navigate(typeof(SysAndRec), null, _transitionInfo); break;
-                case 3: MainFrame.Navigate(typeof(UWP), null, _transitionInfo); break;
-                case 4: MainFrame.Navigate(typeof(Personalization), null, _transitionInfo); break;
-                case 5: MainFrame.Navigate(typeof(ContextMenu), null, _transitionInfo); break;
-                case 6: MainFrame.Navigate(typeof(QuickSet), null, _transitionInfo); break;
-                case 7: MainFrame.Navigate(typeof(WindowsComponents), null, _transitionInfo); break;
-                case 8: MainFrame.Navigate(typeof(Act), null, _transitionInfo); break;
-                case 9: MainFrame.Navigate(typeof(Perf), null, _transitionInfo); break;
-                case 10: MainFrame.Navigate(typeof(SAT), null, _transitionInfo); break;
-                case 11: MainFrame.Navigate(typeof(ProcessMGR), null, _transitionInfo); break;
-                case 12: MainFrame.Navigate(typeof(PCI), null, _transitionInfo); break;
-            }
+            var pages = new[] {
+                typeof(Explorer), typeof(WindowsUpdate), typeof(SysAndRec), typeof(UWP),
+                typeof(Personalization), typeof(ContextMenu), typeof(QuickSet), typeof(WindowsComponents),
+                typeof(Act), typeof(Perf), typeof(SAT), typeof(ProcessMGR), typeof(PCI)
+            };
 
-            Properties.Settings.Default.lastPage = Category.SelectedIndex;
+            _transitionInfo = new EntranceNavigationTransitionInfo();
+            MainFrame.Navigate(pages[Category.SelectedIndex], null, _transitionInfo);
+            Settings.Default.lastPage = Category.SelectedIndex;
             Settings.Default.Save();
         }
 
-		private void MicaWindow_Loaded(object sender, RoutedEventArgs e)
-		{
-            Category.SelectedIndex = Properties.Settings.Default.lastPage;
-
-            Enum.TryParse(Settings.Default.style, out BackdropType bd);
-            MicaWPFServiceUtility.ThemeService.EnableBackdrop(this, bd);
+        private void MicaWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            Category.SelectedIndex = Settings.Default.lastPage;
+            if (Enum.TryParse<BackdropType>(Settings.Default.style, out var bd))
+                MicaWPFServiceUtility.ThemeService.EnableBackdrop(this, bd);
         }
-        private bool isAnimating = false;
 
         public async void ChSt(string st)
         {
             if (isAnimating) return;
-
-            try
-            {
-                isAnimating = true;
-
-                AnimY(status, 300, 26, 0);    
-                status.Text = st;
-
-                await Task.Delay(5000);      
-
-                AnimY(status, 300, 0, 33);    
-            }
-            finally
-            {
-                isAnimating = false;      
-            }
+            isAnimating = true;
+            AnimY(status, 300, 26, 0);
+            status.Text = st;
+            await Task.Delay(5000);
+            AnimY(status, 300, 0, 33);
+            isAnimating = false;
         }
 
         public void LoadLang(string lang)
         {
             try
             {
-                var languageCode = Properties.Settings.Default.lang ?? "en";
-                var basel = Localization.LoadLocalization(languageCode, "base");
-                c1.Content = basel["catname"]["expl"];
-                c2.Content = basel["catname"]["wu"];
-                c3.Content = basel["catname"]["sr"];
-                c4.Content = basel["catname"]["uwp"];
-                c5.Content = basel["catname"]["per"];
-                c6.Content = basel["catname"]["cm"];
-                c7.Content = basel["catname"]["quick"];
-                c8.Content = basel["catname"]["compon"];
-                c9.Content = basel["catname"]["act"];
-                c10.Content = basel["catname"]["perf"];
-                c11.Content = basel["catname"]["sat"];
-                c12.Content = basel["catname"]["procmgr"];
-                c13.Content = basel["catname"]["pci"];
+                var basel = Localization.LoadLocalization(lang, "base");
+                var cats = new[] { c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13 };
+                var keys = new[] { "expl", "wu", "sr", "uwp", "per", "cm", "quick", "compon", "act", "perf", "sat", "procmgr", "pci" };
+
+                for (int i = 0; i < cats.Length; i++) cats[i].Content = basel["catname"][keys[i]];
+
                 rexplorer.Label = basel["lowtabs"]["rexp"];
                 settingsButton.Label = basel["lowtabs"]["set"];
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 MessageBox.Show(ex.Message, "MakuTweaker Error", MessageBoxButton.OK, MessageBoxImage.Stop);
                 System.Windows.Forms.Application.Restart();
-                System.Windows.Application.Current.Shutdown();
+                Application.Current.Shutdown();
             }
         }
-        private void AnimY(UIElement element, double durationMilliseconds, double from, double to)
+
+        private void AnimY(UIElement el, double dur, double from, double to)
         {
-            double currentY = 16;
-
-            if (element.RenderTransform != null && element.RenderTransform is TranslateTransform transform)
-            {
-                currentY = transform.Y;
-            }
-            else if (element.RenderTransform != null && element.RenderTransform is MatrixTransform matrixTransform)
-            {
-                currentY = matrixTransform.Matrix.OffsetY;
-            }
-
-            var moveDownAnimation = new DoubleAnimation
-            {
-                From = from,
-                To = to,
-                Duration = TimeSpan.FromMilliseconds(durationMilliseconds),
-                EasingFunction = new QuinticEase { EasingMode = EasingMode.EaseOut },
-            };
-            if (element.RenderTransform == null || element.RenderTransform is not TranslateTransform)
-            {
-                element.RenderTransform = new TranslateTransform();
-            }
-
-            var translateTransform = (TranslateTransform)element.RenderTransform;
-            translateTransform.BeginAnimation(TranslateTransform.YProperty, moveDownAnimation);
-
+            if (el.RenderTransform is not TranslateTransform) el.RenderTransform = new TranslateTransform();
+            var anim = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(dur)) { EasingFunction = new QuinticEase { EasingMode = EasingMode.EaseOut } };
+            ((TranslateTransform)el.RenderTransform).BeginAnimation(TranslateTransform.YProperty, anim);
         }
+
         public void RebootNotify(int mode)
         {
-            string message = string.Empty;
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var basel = MainWindow.Localization.LoadLocalization(languageCode, "base");
-            Icon trayIcon = new Icon(GetResourceStream("MakuTweakerNew.MakuT.ico"));
+            var basel = Localization.LoadLocalization(Settings.Default.lang, "base")["def"];
+            string message = mode switch { 1 => basel["rebnotify"], 2 => basel["rebnotifyexplorer"], 3 => basel["rebnotifysfc"], _ => "" };
 
-            TaskbarIcon _trayIcon = new TaskbarIcon
-            {
-                ToolTipText = "MakuTweaker",
-                Icon = trayIcon
-            };
-
-            if (mode == 1)
-            {
-                message = basel["def"]["rebnotify"];
-            }
-            else if (mode == 2)
-            {
-                message = basel["def"]["rebnotifyexplorer"];
-            }
-            else if (mode == 3)
-            {
-                message = basel["def"]["rebnotifysfc"];
-            }
-
-            _trayIcon.ShowBalloonTip("MakuTweaker", message, BalloonIcon.Warning);
-
-            Task.Delay(8000).ContinueWith(t =>
-            {
-                _trayIcon.Dispatcher.Invoke(() => _trayIcon.Dispose());
-            });
+            var trayIcon = new TaskbarIcon { Icon = new Icon(GetResourceStream("MakuTweakerNew.MakuT.ico")), ToolTipText = "MakuTweaker" };
+            trayIcon.ShowBalloonTip("MakuTweaker", message, BalloonIcon.Warning);
+            Task.Delay(8000).ContinueWith(_ => trayIcon.Dispatcher.Invoke(trayIcon.Dispose));
         }
-        private Stream GetResourceStream(string resourceName)
-        {
-            var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-            var resourceStream = assembly.GetManifestResourceStream(resourceName);
-            if (resourceStream == null)
-            {
-                throw new FileNotFoundException($"Ресурс {resourceName} не найден.");
-            }
-            return resourceStream;
-        }
+
+        private Stream GetResourceStream(string name) => Assembly.GetExecutingAssembly().GetManifestResourceStream(name) ?? throw new FileNotFoundException($"Ресурс {name} не найден.");
 
         private void settingsButton_Click(object sender, RoutedEventArgs e)
         {
@@ -400,129 +223,41 @@ namespace MakuTweakerNew
             MainFrame.Navigate(typeof(SettingsAbout), null, _transitionInfo);
         }
 
-        private void MainFrame_Navigated(object sender, NavigationEventArgs e)
-        {
-            if (Category.SelectedIndex == -1)
-            {
-                settingsButton.IsEnabled = false;
-            }
-            else
-            {
-                settingsButton.IsEnabled = true;
-            }
-        }
-        public void expk()
-        {
-            Process proc = new Process();
-            ProcessStartInfo startInfo = new ProcessStartInfo();
-            startInfo.FileName = "taskkill";
-            startInfo.Arguments = "/F /IM explorer.exe";
-            proc.StartInfo = startInfo;
-            proc.Start();
-        }
-        private void ExpRestart_Tick(object sender, EventArgs e)
-        {
-            Process.Start("explorer.exe");
-            ExpRestart.Stop();
-        }
+        private void MainFrame_Navigated(object sender, NavigationEventArgs e) => settingsButton.IsEnabled = Category.SelectedIndex != -1;
 
         private void rexplorer_Click(object sender, RoutedEventArgs e)
         {
-            expk();
+            Process.Start(new ProcessStartInfo("taskkill", "/F /IM explorer.exe") { CreateNoWindow = true })?.WaitForExit();
             ExpRestart.Start();
+        }
+
+        private void ExpTimer()
+        {
+            ExpRestart = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            ExpRestart.Tick += (s, e) => { Process.Start("explorer.exe"); ExpRestart.Stop(); };
         }
 
         private async Task CheckForUpd()
         {
-            int ThisBuild = int.Parse(new StreamReader(Assembly.GetExecutingAssembly()
-            .GetManifestResourceStream("MakuTweakerNew.BuildNumber.txt")!)
-            .ReadToEnd()
-            .Trim());
-            string url = "https://raw.githubusercontent.com/AdderlyMark/MakuTweaker/refs/heads/main/ver.json";
-            using (HttpClient client = new HttpClient())
+            try
             {
-                try
+                using var client = new HttpClient();
+                var json = await client.GetStringAsync("https://raw.githubusercontent.com/AdderlyMark/MakuTweaker/refs/heads/main/ver.json");
+                var build = (int)JsonConvert.DeserializeObject<dynamic>(json)!.build;
+                int current = int.Parse(new StreamReader(GetResourceStream("MakuTweakerNew.BuildNumber.txt")).ReadToEnd().Trim());
+
+                if (build > current)
                 {
-                    HttpResponseMessage response = await client.GetAsync(url);
-                    response.EnsureSuccessStatusCode();    
-
-                    string jsonString = await response.Content.ReadAsStringAsync();
-
-                    try
-                    {
-                        var jsonData = JsonConvert.DeserializeObject<Dictionary<string, string>>(jsonString);
-
-                        if (jsonData.ContainsKey("build"))
-                        {
-                            string lb = jsonData["build"];
-                            if (int.Parse(lb) > ThisBuild)
-                            {
-                                Icon trayIcon = new Icon(GetResourceStream("MakuTweakerNew.MakuT.ico"));
-                                TaskbarIcon _trayIcon = new TaskbarIcon
-                                {
-                                    ToolTipText = "MakuTweaker",
-                                    Icon = trayIcon
-                                };
-
-                                if (Properties.Settings.Default.lang == "ru" || Properties.Settings.Default.lang == "ua" || Properties.Settings.Default.lang == "kz")
-                                {
-                                    _trayIcon.ShowBalloonTip("MakuTweaker", "Доступно обновление MakuTweaker!\nНажмите на уведомление, чтобы перейти на страницу загрузки.", BalloonIcon.Info);
-                                }
-                                else
-                                {
-                                    _trayIcon.ShowBalloonTip("MakuTweaker", "An update for MakuTweaker is available!\nClick the notification to go to the download page.", BalloonIcon.Info);
-                                }
-
-
-                                _trayIcon.TrayBalloonTipClicked += (sender, args) =>
-                                {
-                                    Process.Start(new ProcessStartInfo("https://adderly.top/makutweaker") { UseShellExecute = true });
-                                };
-                                Task.Delay(8000).ContinueWith(t =>
-                                {
-                                    _trayIcon.Dispatcher.Invoke(() => _trayIcon.Dispose());
-                                });
-                            }
-                            else
-                            {
-
-                            }
-                        }
-                        else
-                        {
-
-                        }
-                    }
-                    catch (JsonException ex)
-                    {
-
-                    }
-                }
-                catch (HttpRequestException e)
-                {
-
+                    var tray = new TaskbarIcon { Icon = new Icon(GetResourceStream("MakuTweakerNew.MakuT.ico")), ToolTipText = "MakuTweaker" };
+                    bool isRu = Settings.Default.lang is "ru" or "ua" or "kz";
+                    string msg = isRu ? "Доступно обновление MakuTweaker!\nНажмите на уведомление, чтобы перейти на страницу загрузки." : "An update for MakuTweaker is available!\nClick the notification to go to the download page.";
+                    tray.ShowBalloonTip("MakuTweaker", msg, BalloonIcon.Info);
+                    tray.TrayBalloonTipClicked += (s, e) => Process.Start(new ProcessStartInfo("https://adderly.top/makutweaker") { UseShellExecute = true });
+                    await Task.Delay(8000);
+                    tray.Dispose();
                 }
             }
-
-        }
-        private int checkWinVer()
-        {
-            string keyPath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
-            string valueName = "CurrentBuild";
-
-            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(keyPath))
-            {
-                if (key != null)
-                {
-                    object value = key.GetValue(valueName);
-
-                    if (value != null && int.TryParse(value.ToString(), out int build))
-                    {
-                        return build;
-                    }
-                }
-            }
-            return 19045;
+            catch { } // ?
         }
     }
 }

@@ -1,24 +1,11 @@
 ﻿using MakuTweakerNew.Properties;
 using Microsoft.Win32;
-using NvAPIWrapper.Native.GPU;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Media.Media3D;
 using System.Windows.Navigation;
-using System.Windows.Shapes;
-using Windows.UI.Composition.Desktop;
-using static System.Runtime.InteropServices.Marshalling.IIUnknownCacheStrategy;
 
 namespace MakuTweakerNew
 {
@@ -31,30 +18,11 @@ namespace MakuTweakerNew
             InitializeComponent();
             checkReg();
             LoadLang();
-            if (checkWinVer() < 22000)
+            if (WinHelper.GetWindowsBuild() < 22000)
             {
                 endtask.Visibility = Visibility.Collapsed;
             }
             isLoaded = true;
-        }
-        private int checkWinVer()
-        {
-            string keyPath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
-            string valueName = "CurrentBuild";
-
-            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(keyPath))
-            {
-                if (key != null)
-                {
-                    object value = key.GetValue(valueName);
-
-                    if (value != null && int.TryParse(value.ToString(), out int build))
-                    {
-                        return build;
-                    }
-                }
-            }
-            return 19045;
         }
 
         private void RunCmdCommand(string fileName, string arguments)
@@ -73,343 +41,178 @@ namespace MakuTweakerNew
 
         private void apN_Click(object sender, RoutedEventArgs e)
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var per = MainWindow.Localization.LoadLocalization(languageCode, "per");
-            string folderName = newname.Text;
-            RunCmdCommand("reg.exe", "add HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\NamingTemplates /v RenameNameTemplate /t REG_SZ /d \"" + folderName + "\" /f");
+            var per = MainWindow.Localization.LoadLocalization(Settings.Default.lang ?? "en", "per");
+            Registry.SetValue(@"HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\NamingTemplates", "RenameNameTemplate", newname.Text);
             mw.ChSt(per["status"]["apN"]);
         }
 
         private void stN_Click(object sender, RoutedEventArgs e)
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var per = MainWindow.Localization.LoadLocalization(languageCode, "per");
+            var per = MainWindow.Localization.LoadLocalization(Settings.Default.lang ?? "en", "per");
             newname.Text = string.Empty;
-            RunCmdCommand("reg.exe", "delete HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\NamingTemplates /v RenameNameTemplate /f");
+            using var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\NamingTemplates", true);
+            key?.DeleteValue("RenameNameTemplate", false);
             mw.ChSt(per["status"]["stN"]);
         }
 
         private void apC_Click(object sender, RoutedEventArgs e)
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var per = MainWindow.Localization.LoadLocalization(languageCode, "per");
-            string regPath = @"Control Panel\Colors";
+            var per = MainWindow.Localization.LoadLocalization(Settings.Default.lang ?? "en", "per");
 
-            string highlightValue = "";
-            string hotTrackingColorValue = "";
-
-            switch (color.SelectedIndex)
+            var colors = new[]
             {
-                case 0:
-                    highlightValue = "51 153 255";
-                    hotTrackingColorValue = "0 102 204";
-                    break;
-                case 1:
-                    highlightValue = "0 100 100";
-                    hotTrackingColorValue = "0 100 100";
-                    break;
-                case 2:
-                    highlightValue = "180 0 180";
-                    hotTrackingColorValue = "110 0 110";
-                    break;
-                case 3:
-                    highlightValue = "0 90 30";
-                    hotTrackingColorValue = "0 90 30";
-                    break;
-                case 4:
-                    highlightValue = "100 40 0";
-                    hotTrackingColorValue = "100 40 0";
-                    break;
-                case 5:
-                    highlightValue = "135 0 0";
-                    hotTrackingColorValue = "135 0 0";
-                    break;
-                case 6:
-                    highlightValue = "15 0 120";
-                    hotTrackingColorValue = "15 0 120";
-                    break;
-                case 7:
-                    highlightValue = "40 40 40";
-                    hotTrackingColorValue = "40 40 40";
-                    break;
-                default:
-                    highlightValue = "51 153 255";
-                    hotTrackingColorValue = "0 102 204";
-                    return;
-            }
+                ("51 153 255", "0 102 204"), ("0 100 100", "0 100 100"), ("180 0 180", "110 0 110"),
+                ("0 90 30", "0 90 30"), ("100 40 0", "100 40 0"), ("135 0 0", "135 0 0"),
+                ("15 0 120", "15 0 120"), ("40 40 40", "40 40 40")
+            };
 
-            RegistryKey key = Registry.CurrentUser.OpenSubKey(regPath, true);
-
+            int i = color.SelectedIndex >= 0 ? color.SelectedIndex : 0;
+            using var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Colors", true);
             if (key != null)
             {
-                key.SetValue("HightLight", highlightValue, RegistryValueKind.String);
-                key.SetValue("Hilight", highlightValue, RegistryValueKind.String);
-                key.SetValue("HotTrackingColor", hotTrackingColorValue, RegistryValueKind.String);
+                key.SetValue("HightLight", colors[i].Item1);
+                key.SetValue("Hilight", colors[i].Item1);
+                key.SetValue("HotTrackingColor", colors[i].Item2);
             }
-            else
-            {
 
-            }
             mw.ChSt(per["status"]["apC"]);
             mw.RebootNotify(1);
         }
 
         private void LoadLang()
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var per = MainWindow.Localization.LoadLocalization(languageCode, "per");
-            var basel = MainWindow.Localization.LoadLocalization(languageCode, "base");
-            var tooltips = MainWindow.Localization.LoadLocalization(languageCode, "tooltips");
+            var lang = Settings.Default.lang ?? "en";
+            var per = MainWindow.Localization.LoadLocalization(lang, "per")["main"];
+            var basel = MainWindow.Localization.LoadLocalization(lang, "base")["def"];
+            var tooltips = MainWindow.Localization.LoadLocalization(lang, "tooltips")["main"];
 
-            label.Text = per["main"]["label"];
-            defaultnamelabel.Text = per["main"]["defaultnamelabel"];
-            colorlabel.Text = per["main"]["colorlabel"];
-            newname.Watermark = per["main"]["newname"];
-            apN.Content = basel["def"]["apply"];
-            apC.Content = basel["def"]["apply"];
-            stN.Content = per["main"]["b2"];
+            label.Text = per["label"];
+            defaultnamelabel.Text = per["defaultnamelabel"];
+            colorlabel.Text = per["colorlabel"];
+            newname.Watermark = per["newname"];
+            apN.Content = apC.Content = basel["apply"];
+            stN.Content = per["b2"];
 
-            c1.Content = per["main"]["c1"];
-            c2.Content = per["main"]["c2"];
-            c3.Content = per["main"]["c3"];
-            c4.Content = per["main"]["c4"];
-            c5.Content = per["main"]["c5"];
-            c6.Content = per["main"]["c6"];
-            c7.Content = per["main"]["c7"];
-            c8.Content = per["main"]["c8"];
+            c1.Content = per["c1"]; c2.Content = per["c2"]; c3.Content = per["c3"]; c4.Content = per["c4"];
+            c5.Content = per["c5"]; c6.Content = per["c6"]; c7.Content = per["c7"]; c8.Content = per["c8"];
 
-            smallwindows.Header = per["main"]["smallwindows"];
-            blur.Header = per["main"]["blur"];
-            transparency.Header = per["main"]["transparency"];
-            darktheme.Header = per["main"]["darktheme"];
-            verbose.Header = per["main"]["verbose"];
-            endtask.Header = per["main"]["etask"];
-            disablelogo.Header = per["main"]["disablelogo"];
-            disableanim.Header = per["main"]["disableanim"];
+            ModernWpf.Controls.ToggleSwitch[] ts = { smallwindows, blur, transparency, darktheme, verbose, endtask, disablelogo, disableanim };
+            string[] keys = ["smallwindows", "blur", "transparency", "darktheme", "verbose", "etask", "disablelogo", "disableanim"];
 
-            smallwindows.OffContent = basel["def"]["off"];
-            blur.OffContent = basel["def"]["off"];
-            transparency.OffContent = basel["def"]["off"];
-            darktheme.OffContent = basel["def"]["off"];
-            disablelogo.OffContent = basel["def"]["off"];
-            disableanim.OffContent = basel["def"]["off"];
-            verbose.OffContent = basel["def"]["off"];
-            endtask.OffContent = basel["def"]["off"];
+            for (int i = 0; i < ts.Length; i++)
+            {
+                ts[i].Header = per[keys[i]];
+                ts[i].OffContent = basel["off"];
+                ts[i].OnContent = basel["on"];
+            }
 
-            smallwindows.OnContent = basel["def"]["on"];
-            blur.OnContent = basel["def"]["on"];
-            transparency.OnContent = basel["def"]["on"];
-            darktheme.OnContent = basel["def"]["on"];
-            disablelogo.OnContent = basel["def"]["on"];
-            disableanim.OnContent = basel["def"]["on"];
-            verbose.OnContent = basel["def"]["on"];
-            endtask.OnContent = basel["def"]["on"];
-
-            sys_tooltip_verbose.Content = tooltips["main"]["advanced"];
+            sys_tooltip_verbose.Content = tooltips["advanced"];
         }
+
         private void checkReg()
         {
-            this.newname.Text = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\NamingTemplates")?.GetValue("RenameNameTemplate")?.ToString();
+            var (CU, LM) = (Registry.CurrentUser, Registry.LocalMachine);
 
-            string captionHeight = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop\WindowMetrics")?.GetValue("CaptionHeight")?.ToString();
-            smallwindows.IsOn = (captionHeight == "-270");
-            blur.IsOn = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\System")?.GetValue("DisableAcrylicBackgroundOnLogon")?.Equals(1) == true;
-            transparency.IsOn = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")?.GetValue("EnableTransparency")?.Equals(0) == true;
-            darktheme.IsOn = (Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")?.GetValue("AppsUseLightTheme") is int a && a == 0)&& (Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")?.GetValue("SystemUsesLightTheme") is int b && b == 0);
-            verbose.IsOn = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System")?.GetValue("verbosestatus")?.Equals(1) ?? false;
-            endtask.IsOn = (Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings")?.GetValue("TaskbarEndTask") is int v && v == 1);
+            newname.Text = CU.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\NamingTemplates")?.GetValue("RenameNameTemplate")?.ToString();
+            smallwindows.IsOn = CU.OpenSubKey(@"Control Panel\Desktop\WindowMetrics")?.GetValue("CaptionHeight")?.ToString() == "-270";
+            blur.IsOn = LM.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\System")?.GetValue("DisableAcrylicBackgroundOnLogon")?.Equals(1) == true;
+            transparency.IsOn = CU.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")?.GetValue("EnableTransparency")?.Equals(0) == true;
+
+            using var themeKey = CU.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            darktheme.IsOn = themeKey?.GetValue("AppsUseLightTheme")?.Equals(0) == true && themeKey?.GetValue("SystemUsesLightTheme")?.Equals(0) == true;
+
+            verbose.IsOn = LM.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System")?.GetValue("verbosestatus")?.Equals(1) == true;
+            endtask.IsOn = CU.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings")?.GetValue("TaskbarEndTask")?.Equals(1) == true;
+
             try
             {
-                using (Process p = new Process())
-                {
-                    p.StartInfo.FileName = "bcdedit";
-                    p.StartInfo.Arguments = "/enum {globalsettings}";
-                    p.StartInfo.UseShellExecute = false;
-                    p.StartInfo.RedirectStandardOutput = true;
-                    p.StartInfo.CreateNoWindow = true;
-                    p.Start();
-
-                    string output = p.StandardOutput.ReadToEnd().ToLower();
-                    p.WaitForExit();
-                    disablelogo.IsOn = IsBcdValueEnabled(output, "custom:16000067", "bootlogo", "nobootlogo");
-                    disableanim.IsOn = IsBcdValueEnabled(output, "custom:16000069", "nobootuxprogress");
-                }
+                var p = Process.Start(new ProcessStartInfo("bcdedit", "/enum {globalsettings}") { UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true });
+                string output = p?.StandardOutput.ReadToEnd().ToLower() ?? "";
+                disablelogo.IsOn = IsBcd(output, "custom:16000067", "bootlogo", "nobootlogo");
+                disableanim.IsOn = IsBcd(output, "custom:16000069", "nobootuxprogress");
             }
             catch { }
 
-            var highlightColor = Registry.CurrentUser.OpenSubKey(@"Control Panel\Colors")?.GetValue("HightLight")?.ToString();
-            switch (highlightColor)
-            {
-                case "51 153 255": color.SelectedIndex = 0; break;
-                case "0 100 100": color.SelectedIndex = 1; break;
-                case "180 0 180": color.SelectedIndex = 2; break;
-                case "0 90 30": color.SelectedIndex = 3; break;
-                case "100 40 0": color.SelectedIndex = 4; break;
-                case "135 0 0": color.SelectedIndex = 5; break;
-                case "15 0 120": color.SelectedIndex = 6; break;
-                case "40 40 40": color.SelectedIndex = 7; break;
-                default: color.SelectedIndex = 0; break;
-            }
+            var curColor = CU.OpenSubKey(@"Control Panel\Colors")?.GetValue("HightLight")?.ToString();
+            var colorValues = new[] { "51 153 255", "0 100 100", "180 0 180", "0 90 30", "100 40 0", "135 0 0", "15 0 120", "40 40 40" };
+            color.SelectedIndex = Math.Max(0, Array.IndexOf(colorValues, curColor));
         }
 
-        private bool IsBcdValueEnabled(string output, params string[] keys)
+        private bool IsBcd(string outStr, params string[] keys)
         {
-            string[] lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            string line = lines.FirstOrDefault(l => keys.Any(k => l.Contains(k)));
+            var line = outStr.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(l => keys.Any(k => l.Contains(k)));
+            if (string.IsNullOrEmpty(line))
+                return false;
 
-            if (string.IsNullOrEmpty(line)) return false;
-
-            string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length > 1)
-            {
-                string val = parts.Last().ToLower().Trim();
-
-                if (val.StartsWith("n") || val.StartsWith("н") || val == "0" || val == "false")
-                    return false;
-
-                return true;
-            }
-            return false;
+            var val = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries).Last().ToLower();
+            return !(val.StartsWith("n") || val.StartsWith("н") || val == "0" || val == "false");
         }
 
         private void endtask_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (endtask.IsOn)
-                {
-                    case true:
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings").SetValue("TaskbarEndTask", 1);
-                        break;
-                    case false:
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings").SetValue("TaskbarEndTask", 0);
-                        break;
-                }
-            }
+            if (!isLoaded) return;
+
+            Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings").SetValue("TaskbarEndTask", endtask.IsOn ? 1 : 0);
         }
 
         private void smallwindows_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (smallwindows.IsOn)
-                {
-                    case true:
-                        RunCmdCommand("reg.exe", "add \"HKEY_CURRENT_USER\\Control Panel\\Desktop\\WindowMetrics\" /v CaptionHeight /t REG_SZ /d -270 /f");
-                        RunCmdCommand("reg.exe", "add \"HKEY_CURRENT_USER\\Control Panel\\Desktop\\WindowMetrics\" /v CaptionWidth /t REG_SZ /d -270 /f");
-                        break;
-                    case false:
-                        RunCmdCommand("reg.exe", "add \"HKEY_CURRENT_USER\\Control Panel\\Desktop\\WindowMetrics\" /v CaptionHeight /t REG_SZ /d -330 /f");
-                        RunCmdCommand("reg.exe", "add \"HKEY_CURRENT_USER\\Control Panel\\Desktop\\WindowMetrics\" /v CaptionWidth /t REG_SZ /d -330 /f");
-                        break;
-                }
-                mw.RebootNotify(1);
-            }
+            if (!isLoaded) return;
+
+            string val = smallwindows.IsOn ? "-270" : "-330";
+            Registry.SetValue(@"HKEY_CURRENT_USER\Control Panel\Desktop\WindowMetrics", "CaptionHeight", val);
+            Registry.SetValue(@"HKEY_CURRENT_USER\Control Panel\Desktop\WindowMetrics", "CaptionWidth", val);
+            mw.RebootNotify(1);
         }
 
         private void blur_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (blur.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\System").SetValue("DisableAcrylicBackgroundOnLogon", 1);
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\System").SetValue("DisableAcrylicBackgroundOnLogon", 0);
-                        break;
-                }
-            }
+            if (!isLoaded) return;
+
+            Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\System").SetValue("DisableAcrylicBackgroundOnLogon", blur.IsOn ? 1 : 0);
         }
 
         private void transparency_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (transparency.IsOn)
-                {
-                    case true:
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").SetValue("EnableTransparency", 0);
-                        break;
-                    case false:
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").SetValue("EnableTransparency", 1);
-                        break;
-                }
-            }
+            if (!isLoaded) return;
+
+            Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").SetValue("EnableTransparency", transparency.IsOn ? 0 : 1);
         }
 
         private void darktheme_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (darktheme.IsOn)
-                {
-                    case true:
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").SetValue("AppsUseLightTheme", 0);
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").SetValue("SystemUsesLightTheme", 0);
-                        break;
-                    case false:
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").SetValue("AppsUseLightTheme", 1);
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").SetValue("SystemUsesLightTheme", 1);
-                        break;
-                }
-                mw.RebootNotify(2);
-                System.Windows.Forms.Application.Restart();
-                Application.Current.Shutdown();
-            }
+            if (!isLoaded) return;
+
+            Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").SetValue("AppsUseLightTheme", darktheme.IsOn ? 0 : 1);
+            Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").SetValue("SystemUsesLightTheme", darktheme.IsOn ? 0 : 1);
+            mw.RebootNotify(2);
+            System.Windows.Forms.Application.Restart();
+            Application.Current.Shutdown();
         }
 
         private void verbose_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (verbose.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System").SetValue("verbosestatus", 1);
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System").SetValue("verbosestatus", 0);
-                        break;
-                }
-            }
+            if (!isLoaded) return;
+
+            Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System").SetValue("verbosestatus", verbose.IsOn ? 1 : 0);
         }
 
         private void disablelogo_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (disablelogo.IsOn)
-                {
-                    case true:
-                        RunCmdCommand("bcdedit", "/set \"{globalsettings}\" custom:16000067 true");
-                        mw.RebootNotify(1);
-                        break;
-                    case false:
-                        RunCmdCommand("bcdedit", "/deletevalue \"{globalsettings}\" custom:16000067");
-                        mw.RebootNotify(1);
-                        break;
-                }
-            }
+            if (!isLoaded) return;
+
+            if (disablelogo.IsOn) RunCmdCommand("bcdedit", "/set \"{globalsettings}\" custom:16000067 true");
+            else RunCmdCommand("bcdedit", "/deletevalue \"{globalsettings}\" custom:16000067");
+            mw.RebootNotify(1);
         }
 
         private void disableanim_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (disableanim.IsOn)
-                {
-                    case true:
-                        RunCmdCommand("bcdedit", "/set \"{globalsettings}\" custom:16000069 true");
-                        mw.RebootNotify(1);
-                        break;
-                    case false:
-                        RunCmdCommand("bcdedit", "/deletevalue \"{globalsettings}\" custom:16000069");
-                        mw.RebootNotify(1);
-                        break;
-                }
-            }
+            if (!isLoaded) return;
+
+            if (disableanim.IsOn) RunCmdCommand("bcdedit", "/set \"{globalsettings}\" custom:16000069 true");
+            else RunCmdCommand("bcdedit", "/deletevalue \"{globalsettings}\" custom:16000069");
+            mw.RebootNotify(1);
         }
     }
 }

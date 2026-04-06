@@ -1,35 +1,21 @@
 ﻿using MakuTweakerNew.Properties;
-using MicaWPF.Controls;
 using Microsoft.Win32;
+using ModernWpf.Controls;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Management;
-using System.Net.Mail;
-using System.Runtime.Intrinsics.X86;
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using Windows.UI.Composition.Desktop;
-using static System.Runtime.InteropServices.JavaScript.JSType;
-using static System.Runtime.InteropServices.Marshalling.IIUnknownCacheStrategy;
 
 namespace MakuTweakerNew
 {
-    public partial class SysAndRec : Page
+    public partial class SysAndRec : System.Windows.Controls.Page
     {
-        bool isLoaded = false;
-        MainWindow mw = (MainWindow)System.Windows.Application.Current.MainWindow;
+        private readonly bool isLoaded = false;
+        private readonly MainWindow mw = (MainWindow)Application.Current.MainWindow;
+
         public SysAndRec()
         {
             InitializeComponent();
@@ -39,8 +25,7 @@ namespace MakuTweakerNew
 
             if (!HasBattery())
             {
-                batterylabel.Visibility = Visibility.Collapsed;
-                report.Visibility = Visibility.Collapsed;
+                batterylabel.Visibility = report.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -48,89 +33,31 @@ namespace MakuTweakerNew
         {
             try
             {
-                using (var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_Battery"))
-                using (var results = searcher.Get())
-                {
-                    return results.Count > 0;
-                }
+                using var searcher = new ManagementObjectSearcher("SELECT * FROM Win32_Battery");
+                using var results = searcher.Get();
+                return results.Count > 0;
             }
-            catch
-            {
-                return false;
-            }
+            catch { return false; }
         }
-        private string GetCmdOutput(string command, string arguments)
+
+        private void Run(string file, string args, bool wait = false)
         {
             try
             {
-                using (Process p = new Process())
-                {
-                    p.StartInfo.FileName = command;
-                    p.StartInfo.Arguments = arguments;
-                    p.StartInfo.UseShellExecute = false;
-                    p.StartInfo.RedirectStandardOutput = true;
-                    p.StartInfo.CreateNoWindow = true;
-                    p.Start();
-                    string output = p.StandardOutput.ReadToEnd();
-                    p.WaitForExit();
-                    return output.ToLower();
-                }
+                var p = Process.Start(new ProcessStartInfo(file, args) { CreateNoWindow = true, UseShellExecute = false });
+                if (wait) p?.WaitForExit();
             }
-            catch
-            {
-                MessageBox.Show("CMD Error", "MakuTweaker", MessageBoxButton.OK, MessageBoxImage.Error);
-                return "";
-            }
+            catch { }
         }
 
-        private void RunCmdCommand(string fileName, string arguments)
+        private string GetOutput(string file, string args)
         {
-            ProcessStartInfo psi = new ProcessStartInfo
+            try
             {
-                FileName = fileName,
-                Arguments = arguments,
-                CreateNoWindow = true,
-                UseShellExecute = false,
-                WindowStyle = ProcessWindowStyle.Hidden
-            };
-
-            using (Process p = new Process())
-            {
-                p.StartInfo = psi;
-                p.Start();
+                using var p = Process.Start(new ProcessStartInfo(file, args) { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true });
+                return p?.StandardOutput.ReadToEnd().ToLower() ?? "";
             }
-        }
-
-        private bool IsPowerSettingZero(string output)
-        {
-            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
-            if (lines.Length >= 2)
-            {
-                return lines[lines.Length - 1].Contains("0x00000000") &&
-                       lines[lines.Length - 2].Contains("0x00000000");
-            }
-            return false;
-        }
-
-        private int checkWinVer()
-        {
-            string keyPath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
-            string valueName = "CurrentBuild";
-
-            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(keyPath))
-            {
-                if (key != null)
-                {
-                    object value = key.GetValue(valueName);
-
-                    if (value != null && int.TryParse(value.ToString(), out int build))
-                    {
-                        return build;
-                    }
-                }
-            }
-            return 19045;
+            catch { return ""; }
         }
 
         private void sfc_Click(object sender, RoutedEventArgs e)
@@ -149,453 +76,240 @@ namespace MakuTweakerNew
 
         private void temp_Click(object sender, RoutedEventArgs e)
         {
-            Process.Start("cmd.exe", "/c del /q /f %temp%");
+            Run("cmd.exe", "/c del /q /f %temp%");
             temp.IsEnabled = false;
         }
 
         private void LoadLang()
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var sr = MainWindow.Localization.LoadLocalization(languageCode, "sr");
-            var basel = MainWindow.Localization.LoadLocalization(languageCode, "base");
-            var compon = MainWindow.Localization.LoadLocalization(languageCode, "compon");
-            var tooltips = MainWindow.Localization.LoadLocalization(languageCode, "tooltips");
+            var lang = Settings.Default.lang ?? "en";
+            var sr = MainWindow.Localization.LoadLocalization(lang, "sr")["main"];
+            var bDef = MainWindow.Localization.LoadLocalization(lang, "base")["def"];
+            var tt = MainWindow.Localization.LoadLocalization(lang, "tooltips")["main"];
 
-            label.Text = sr["main"]["label"];
-            sfclabel.Text = sr["main"]["sfclabel"];
-            dismlabel.Text = sr["main"]["dismlabel"];
-            templabel.Text = sr["main"]["templabel"];
-            batterylabel.Text = sr["main"]["batterylabel"];
-            sfc.Content = sr["main"]["b2"];
-            dism.Content = sr["main"]["b2"];
-            temp.Content = sr["main"]["b4"];
-            report.Content = sr["main"]["reportbutton"];
+            label.Text = sr["label"];
+            sfclabel.Text = sr["sfclabel"];
+            dismlabel.Text = sr["dismlabel"];
+            templabel.Text = sr["templabel"];
+            batterylabel.Text = sr["batterylabel"];
+            sfc.Content = dism.Content = sr["b2"];
+            temp.Content = sr["b4"];
+            report.Content = sr["reportbutton"];
 
-            oldbootloader.Header = sr["main"]["oldbootloader"];
-            advancedboot.Header = sr["main"]["advancedboot"];
-            bitlocker.Header = sr["main"]["bitlocker"];
-            chkdsk.Header = sr["main"]["chkdsk"];
-            coreisol.Header = sr["main"]["coreisol"];
-            hybern.Header = sr["main"]["hybern"];
-            swap.Header = sr["main"]["swap"];
-            sleeptimeout.Header = sr["main"]["sleeptimeout"];
-            smartscreen.Header = sr["main"]["smartscreen"];
-            uac.Header = sr["main"]["uac"];
-            sticky.Header = sr["main"]["sticky"];
-            vbs.Header = sr["main"]["vbs"];
-            bing.Header = sr["main"]["bing"];
-            telemetry.Header = sr["main"]["telemetry"];
-            ttl.Header = sr["main"]["ttl"];
+            var toggles = new (ToggleSwitch s, string key)[]
+            {
+                (oldbootloader, "oldbootloader"), (advancedboot, "advancedboot"), (bitlocker, "bitlocker"),
+                (chkdsk, "chkdsk"), (coreisol, "coreisol"), (hybern, "hybern"), (swap, "swap"),
+                (sleeptimeout, "sleeptimeout"), (smartscreen, "smartscreen"), (uac, "uac"),
+                (sticky, "sticky"), (vbs, "vbs"), (bing, "bing"), (telemetry, "telemetry"), (ttl, "ttl")
+            };
 
-            oldbootloader.OffContent = basel["def"]["off"];
-            advancedboot.OffContent = basel["def"]["off"];
-            bitlocker.OffContent = basel["def"]["off"];
-            chkdsk.OffContent = basel["def"]["off"];
-            coreisol.OffContent = basel["def"]["off"];
-            hybern.OffContent = basel["def"]["off"];
-            swap.OffContent = basel["def"]["off"];
-            sleeptimeout.OffContent = basel["def"]["off"];
-            smartscreen.OffContent = basel["def"]["off"];
-            uac.OffContent = basel["def"]["off"];
-            sticky.OffContent = basel["def"]["off"];
-            vbs.OffContent = basel["def"]["off"];
-            bing.OffContent = basel["def"]["off"];
-            telemetry.OffContent = basel["def"]["off"];
-            ttl.OffContent = basel["def"]["off"];
+            foreach (var (s, key) in toggles)
+            {
+                s.Header = sr[key];
+                s.OffContent = bDef["off"];
+                s.OnContent = bDef["on"];
+            }
 
-            oldbootloader.OnContent = basel["def"]["on"];
-            advancedboot.OnContent = basel["def"]["on"];
-            bitlocker.OnContent = basel["def"]["on"];
-            chkdsk.OnContent = basel["def"]["on"];
-            coreisol.OnContent = basel["def"]["on"];
-            hybern.OnContent = basel["def"]["on"];
-            swap.OnContent = basel["def"]["on"];
-            sleeptimeout.OnContent = basel["def"]["on"];
-            smartscreen.OnContent = basel["def"]["on"];
-            uac.OnContent = basel["def"]["on"];
-            sticky.OnContent = basel["def"]["on"];
-            vbs.OnContent = basel["def"]["on"];
-            bing.OnContent = basel["def"]["on"];
-            telemetry.OnContent = basel["def"]["on"];
-            ttl.OnContent = basel["def"]["on"];
-
-            sys_tooltip_sfc.Content = tooltips["main"]["sfc"];
-            sys_tooltip_dism.Content = tooltips["main"]["dism"];
-            sys_tooltip_sticky.Content = tooltips["main"]["sticky"];
-            sys_tooltip_coreisol.Content = tooltips["main"]["coreisol"];
-            sys_tooltip_uac.Content = tooltips["main"]["duac"];
-            sys_tooltip_smartscreen.Content = tooltips["main"]["smartscr"];
-            sys_tooltip_hyber.Content = tooltips["main"]["hybern"];
-            sys_tooltip_vbs.Content = tooltips["main"]["coreisol"];
-            sys_tooltip_swap.Content = tooltips["main"]["swap"];
-            sys_tooltip_oldbootloader.Content = tooltips["main"]["oldloader"];
-            sys_tooltip_advancedboot.Content = tooltips["main"]["additional"];
-            sys_tooltip_chkdsk.Content = tooltips["main"]["chkdsk"];
-            sys_tooltip_bitlocker.Content = tooltips["main"]["bitlocker"];
-            sys_tooltip_bing.Content = tooltips["main"]["bing"];
-            sys_tooltip_ttl.Content = tooltips["main"]["ttl"];
+            sys_tooltip_sfc.Content = tt["sfc"];
+            sys_tooltip_dism.Content = tt["dism"];
+            sys_tooltip_sticky.Content = tt["sticky"];
+            sys_tooltip_coreisol.Content = tt["coreisol"];
+            sys_tooltip_uac.Content = tt["duac"];
+            sys_tooltip_smartscreen.Content = tt["smartscr"];
+            sys_tooltip_hyber.Content = tt["hybern"];
+            sys_tooltip_vbs.Content = tt["coreisol"];
+            sys_tooltip_swap.Content = tt["swap"];
+            sys_tooltip_oldbootloader.Content = tt["oldloader"];
+            sys_tooltip_advancedboot.Content = tt["additional"];
+            sys_tooltip_chkdsk.Content = tt["chkdsk"];
+            sys_tooltip_bitlocker.Content = tt["bitlocker"];
+            sys_tooltip_bing.Content = tt["bing"];
+            sys_tooltip_ttl.Content = tt["ttl"];
         }
+
         private void checkReg()
         {
-            bitlocker.IsOn = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\BitLocker")?.GetValue("PreventDeviceEncryption")?.Equals(1) ?? false;
-            chkdsk.IsOn = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager")?.GetValue("AutoChkTimeout")?.Equals(60) ?? false;
-            coreisol.IsOn = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios")?.GetValue("HypervisorEnforcedCodeIntegrity")?.Equals(0) ?? false;
-            hybern.IsOn = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Power")?.GetValue("HibernateEnabled")?.Equals(0) ?? false;
-            telemetry.IsOn = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Policies\DataCollection")?.GetValue("AllowTelemetry")?.Equals(0) ?? false;
-            swap.IsOn = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management")?.GetValue("PagingFiles") is string[] arr? arr.All(s => string.IsNullOrWhiteSpace(s)) : true;
-            smartscreen.IsOn = (Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", true)?.GetValue("EnableSmartScreen")?.Equals(0) ?? false) ||
-          (Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer", true)?.GetValue("SmartScreenEnabled")?.Equals("Off") ?? false);
-            uac.IsOn = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", true)?.GetValue("EnableLUA")?.Equals(0) ?? false;
-            sticky.IsOn = (Registry.CurrentUser.OpenSubKey(@"Control Panel\Accessibility\StickyKeys", true)?.GetValue("Flags")?.Equals("506") ?? false)
-                      || (Registry.CurrentUser.OpenSubKey(@"Control Panel\Accessibility\ToggleKeys", true)?.GetValue("Flags")?.Equals("58") ?? false)
-                      || (Registry.CurrentUser.OpenSubKey(@"Control Panel\Accessibility\Keyboard Response", true)?.GetValue("Flags")?.Equals("122") ?? false);
+            var (CU, LM) = (Registry.CurrentUser, Registry.LocalMachine);
+            bool Exists(RegistryKey r, string p, string n, object v) => r.OpenSubKey(p)?.GetValue(n)?.Equals(v) ?? false;
 
-            vbs.IsOn = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard")?.GetValue("EnableVirtualizationBasedSecurity")?.Equals(0) ?? false;
-            bing.IsOn = Registry.CurrentUser.OpenSubKey(@"Software\Policies\Microsoft\Windows\Explorer", true)?.GetValue("DisableSearchBoxSuggestions")?.Equals(1) ?? false;
-            ttl.IsOn = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters")?.GetValue("DefaultTTL")?.Equals(65) ?? false;
+            bitlocker.IsOn = Exists(LM, @"SYSTEM\CurrentControlSet\Control\BitLocker", "PreventDeviceEncryption", 1);
+            chkdsk.IsOn = Exists(LM, @"SYSTEM\CurrentControlSet\Control\Session Manager", "AutoChkTimeout", 60);
+            coreisol.IsOn = Exists(LM, @"SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios", "HypervisorEnforcedCodeIntegrity", 0);
+            hybern.IsOn = Exists(LM, @"SYSTEM\CurrentControlSet\Control\Power", "HibernateEnabled", 0);
+            telemetry.IsOn = Exists(LM, @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Policies\DataCollection", "AllowTelemetry", 0);
+            vbs.IsOn = Exists(LM, @"SYSTEM\CurrentControlSet\Control\DeviceGuard", "EnableVirtualizationBasedSecurity", 0);
+            bing.IsOn = Exists(CU, @"Software\Policies\Microsoft\Windows\Explorer", "DisableSearchBoxSuggestions", 1);
+            ttl.IsOn = Exists(LM, @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "DefaultTTL", 65);
 
-            string bcdCurrent = GetCmdOutput("bcdedit", "/enum {current}");
+            var paging = LM.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management")?.GetValue("PagingFiles") as string[];
+            swap.IsOn = paging == null || paging.All(string.IsNullOrWhiteSpace);
+
+            smartscreen.IsOn = Exists(LM, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "EnableSmartScreen", 0) ||
+                               Exists(LM, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer", "SmartScreenEnabled", "Off");
+
+            uac.IsOn = Exists(LM, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "EnableLUA", 0);
+
+            sticky.IsOn = Exists(CU, @"Control Panel\Accessibility\StickyKeys", "Flags", "506") ||
+                          Exists(CU, @"Control Panel\Accessibility\ToggleKeys", "Flags", "58") ||
+                          Exists(CU, @"Control Panel\Accessibility\Keyboard Response", "Flags", "122");
+
+            string bcdCurrent = GetOutput("bcdedit", "/enum {current}");
             oldbootloader.IsOn = bcdCurrent.Contains("bootmenupolicy") && bcdCurrent.Contains("legacy");
-            string bcdGlobal = GetCmdOutput("bcdedit", "/enum {globalsettings}");
+            string bcdGlobal = GetOutput("bcdedit", "/enum {globalsettings}");
             advancedboot.IsOn = Regex.IsMatch(bcdGlobal, @"advancedoptions\s+yes", RegexOptions.IgnoreCase);
 
-            string powerVideo = GetCmdOutput("powercfg", "/q SCHEME_CURRENT SUB_VIDEO VIDEOIDLE");
-            string powerSleep = GetCmdOutput("powercfg", "/q SCHEME_CURRENT SUB_SLEEP STANDBYIDLE");
-            sleeptimeout.IsOn = IsPowerSettingZero(powerVideo) && IsPowerSettingZero(powerSleep);
+            string pVideo = GetOutput("powercfg", "/q SCHEME_CURRENT SUB_VIDEO VIDEOIDLE");
+            string pSleep = GetOutput("powercfg", "/q SCHEME_CURRENT SUB_SLEEP STANDBYIDLE");
+            sleeptimeout.IsOn = pVideo.Contains("0x00000000") && pSleep.Contains("0x00000000");
         }
 
         private void report_Click(object sender, RoutedEventArgs e)
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var sr = MainWindow.Localization.LoadLocalization(languageCode, "sr");
-            SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-            saveFileDialog1.Filter = "HTML (*.html)|*.html";
-            saveFileDialog1.Title = "Microsoft Battery Report";
-            saveFileDialog1.FileName = "battery-report.html";
-            if (saveFileDialog1.ShowDialog() == true)
-            {
+            var lang = Settings.Default.lang ?? "en";
+            var sr = MainWindow.Localization.LoadLocalization(lang, "sr")["status"];
+            var sfd = new Microsoft.Win32.SaveFileDialog { Filter = "HTML (*.html)|*.html", FileName = "battery-report.html" };
 
-                string reportPath = saveFileDialog1.FileName;
-                Process.Start("cmd.exe", $"/c powercfg /batteryreport /output \"{reportPath}\"");
-                mw.ChSt(sr["status"]["o1b"]);
+            if (sfd.ShowDialog() == true)
+            {
+                Run("cmd.exe", $"/c powercfg /batteryreport /output \"{sfd.FileName}\"", true);
+                mw.ChSt(sr["o1b"]);
             }
         }
 
         private void ttl_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
+            if (!isLoaded) return;
+
+            try
             {
-                try
-                {
-                    using (var keyIPv4 = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"))
-                    using (var keyIPv6 = Microsoft.Win32.Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\TCPIP6\Parameters"))
-                    {
-                        if (ttl.IsOn)
-                        {
-                            keyIPv4?.SetValue("DefaultTTL", 65, Microsoft.Win32.RegistryValueKind.DWord);
-                            keyIPv6?.SetValue("DefaultTTL", 65, Microsoft.Win32.RegistryValueKind.DWord);
-                        }
-                        else
-                        {
-                            keyIPv4?.DeleteValue("DefaultTTL", false);
-                            keyIPv6?.DeleteValue("DefaultTTL", false);
-                        }
-                    }
-                }
-                catch { }
+                using var v4 = Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters");
+                using var v6 = Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\TCPIP6\Parameters");
+                if (ttl.IsOn) { v4.SetValue("DefaultTTL", 65); v6.SetValue("DefaultTTL", 65); }
+                else { v4.DeleteValue("DefaultTTL", false); v6.DeleteValue("DefaultTTL", false); }
             }
+            catch { }
         }
 
         private void sticky_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (sticky.IsOn)
-                {
-                    case true:
-                        Registry.CurrentUser.CreateSubKey(@"Control Panel\Accessibility\StickyKeys").SetValue("Flags", "506");
-                        Registry.CurrentUser.CreateSubKey(@"Control Panel\Accessibility\Keyboard Response").SetValue("Flags", "122");
-                        Registry.CurrentUser.CreateSubKey(@"Control Panel\Accessibility\ToggleKeys").SetValue("Flags", "58");
-                        break;
-                    case false:
-                        Registry.CurrentUser.CreateSubKey(@"Control Panel\Accessibility\StickyKeys").SetValue("Flags", "510");
-                        Registry.CurrentUser.CreateSubKey(@"Control Panel\Accessibility\Keyboard Response").SetValue("Flags", "126");
-                        Registry.CurrentUser.CreateSubKey(@"Control Panel\Accessibility\ToggleKeys").SetValue("Flags", "62");
-                        break;
-                }
-                mw.RebootNotify(1);
-            }
+            if (!isLoaded) return;
+
+            string f1 = sticky.IsOn ? "506" : "510", f2 = sticky.IsOn ? "122" : "126", f3 = sticky.IsOn ? "58" : "62";
+            Registry.SetValue(@"HKEY_CURRENT_USER\Control Panel\Accessibility\StickyKeys", "Flags", f1);
+            Registry.SetValue(@"HKEY_CURRENT_USER\Control Panel\Accessibility\Keyboard Response", "Flags", f2);
+            Registry.SetValue(@"HKEY_CURRENT_USER\Control Panel\Accessibility\ToggleKeys", "Flags", f3);
+            mw.RebootNotify(1);
         }
 
         private void coreisol_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (coreisol.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios").SetValue("HypervisorEnforcedCodeIntegrity", 0);
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios").SetValue("HypervisorEnforcedCodeIntegrity", 1);
-                        break;
-                }
-                mw.RebootNotify(1);
-            }
+            if (!isLoaded) return;
+
+            Registry.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios", "HypervisorEnforcedCodeIntegrity", coreisol.IsOn ? 0 : 1);
+            mw.RebootNotify(1);
         }
 
         private void uac_Toggled(object sender, RoutedEventArgs e)
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var sr = MainWindow.Localization.LoadLocalization(languageCode, "sr");
+            if (!isLoaded) return;
 
-
-            if (isLoaded)
+            if (WinHelper.GetWindowsBuild() >= 22621 && uac.IsOn)
             {
-                if (checkWinVer() >= 22621 && uac.IsOn)
+                var sr = MainWindow.Localization.LoadLocalization(Settings.Default.lang ?? "en", "sr")["status"];
+                if (System.Windows.Forms.MessageBox.Show(sr["uacwarn"], "MakuTweaker", System.Windows.Forms.MessageBoxButtons.YesNo, System.Windows.Forms.MessageBoxIcon.Warning) == System.Windows.Forms.DialogResult.No)
                 {
-                    System.Windows.Forms.DialogResult res = System.Windows.Forms.MessageBox.Show(sr["status"]["uacwarn"], "MakuTweaker", System.Windows.Forms.MessageBoxButtons.YesNo, System.Windows.Forms.MessageBoxIcon.Warning);
-                    if (res == System.Windows.Forms.DialogResult.No)
-                    {
-                        uac.IsOn = false;
-                        return;
-                    }
+                    uac.IsOn = false; return;
                 }
-                switch (uac.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System").SetValue("EnableLUA", 0);
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\Attachments")?.SetValue("SaveZoneInformation", 1, RegistryValueKind.DWord);
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\Associations")?.SetValue("LowRiskFileTypes", ".exe;.msi;.bat;", RegistryValueKind.String);
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System").SetValue("EnableLUA", 1);
-                        break;
-                }
+            }
+            Registry.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "EnableLUA", uac.IsOn ? 0 : 1);
+            if (uac.IsOn)
+            {
+                Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Policies\Attachments", "SaveZoneInformation", 1);
+                Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Policies\Associations", "LowRiskFileTypes", ".exe;.msi;.bat;");
             }
         }
 
         private void smartscreen_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (smartscreen.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System").SetValue("EnableSmartScreen", 0);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer").SetValue("SmartScreenEnabled", "Off", RegistryValueKind.String);
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\Attachments").SetValue("SaveZoneInformation", 1, RegistryValueKind.DWord);
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System").SetValue("EnableSmartScreen", 1);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer").SetValue("SmartScreenEnabled", "Warn", RegistryValueKind.String);
-                        Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\Attachments").SetValue("SaveZoneInformation", 0, RegistryValueKind.DWord);
-                        break;
-                }
-            }
+            if (!isLoaded) return;
+
+            Registry.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "EnableSmartScreen", smartscreen.IsOn ? 0 : 1);
+            Registry.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer", "SmartScreenEnabled", smartscreen.IsOn ? "Off" : "Warn");
         }
 
         private void hybern_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (hybern.IsOn)
-                {
-                    case true:
-                        Process.Start("cmd.exe", "/C powercfg /h off");
-                        break;
-                    case false:
-                        Process.Start("cmd.exe", "/C powercfg /h on");
-                        break;
-                }
-                mw.RebootNotify(1);
-            }
+            if (!isLoaded) return;
+
+            Run("cmd.exe", "/C powercfg /h " + (hybern.IsOn ? "off" : "on"), true);
+            mw.RebootNotify(1);
         }
 
         private void sleeptimeout_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (sleeptimeout.IsOn)
-                {
-                    case true:
-                        RunCmdCommand("powercfg", "-change -monitor-timeout-ac 0");
-                        RunCmdCommand("powercfg", "-change -monitor-timeout-dc 0");
-                        RunCmdCommand("powercfg", "-change -standby-timeout-ac 0");
-                        RunCmdCommand("powercfg", "-change -standby-timeout-dc 0");
-                        break;
-                    case false:
-                        RunCmdCommand("powercfg", "-change -monitor-timeout-ac 10");
-                        RunCmdCommand("powercfg", "-change -monitor-timeout-dc 5");
-                        RunCmdCommand("powercfg", "-change -standby-timeout-ac 30");
-                        RunCmdCommand("powercfg", "-change -standby-timeout-dc 15");
-                        break;
-                }
-            }
+            if (!isLoaded) return;
+
+            int m = sleeptimeout.IsOn ? 0 : 10, s = sleeptimeout.IsOn ? 0 : 30;
+            Run("powercfg", $"-change -monitor-timeout-ac {m}");
+            Run("powercfg", $"-change -monitor-timeout-dc {m / 2}");
+            Run("powercfg", $"-change -standby-timeout-ac {s}");
+            Run("powercfg", $"-change -standby-timeout-dc {s / 2}");
         }
 
         private void bing_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (bing.IsOn)
-                {
-                    case true:
-                            Registry.CurrentUser.CreateSubKey(@"Software\Policies\Microsoft\Windows\Explorer").SetValue("DisableSearchBoxSuggestions", 1);
-                        break;
-                    case false:
-                            Registry.CurrentUser.CreateSubKey(@"Software\Policies\Microsoft\Windows\Explorer").SetValue("DisableSearchBoxSuggestions", 0);
-                        break;
-                }
-            }
+            if (isLoaded) Registry.SetValue(@"HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\Explorer", "DisableSearchBoxSuggestions", bing.IsOn ? 1 : 0);
         }
 
         private void vbs_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (vbs.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard").SetValue("EnableVirtualizationBasedSecurity", 0, RegistryValueKind.DWord);
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard").SetValue("RequirePlatformSecurityFeatures", 0, RegistryValueKind.DWord);
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Lsa").SetValue("LsaCfgFlags", 0, RegistryValueKind.DWord);
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity").SetValue("Enabled", 0, RegistryValueKind.DWord);
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard").SetValue("RequireMicrosoftSignedBootChain", 0, RegistryValueKind.DWord);
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard").SetValue("KernelDMAProtection", 0, RegistryValueKind.DWord);
-                        Process.Start("cmd.exe", "/c bcdedit /set hypervisorlaunchtype off");
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard").SetValue("EnableVirtualizationBasedSecurity", 1, RegistryValueKind.DWord);
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard").SetValue("RequirePlatformSecurityFeatures", 3, RegistryValueKind.DWord);
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Lsa").SetValue("LsaCfgFlags", 1, RegistryValueKind.DWord);
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity").SetValue("Enabled", 1, RegistryValueKind.DWord);
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard").SetValue("RequireMicrosoftSignedBootChain", 1, RegistryValueKind.DWord);
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\DeviceGuard").SetValue("KernelDMAProtection", 1, RegistryValueKind.DWord);
-                        Process.Start("cmd.exe", "/c bcdedit /set hypervisorlaunchtype auto");
-                        break;
-                }
-                mw.RebootNotify(1);
-            }
+            if (!isLoaded) return;
+
+            int v = vbs.IsOn ? 0 : 1;
+            string dg = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceGuard";
+            Registry.SetValue(dg, "EnableVirtualizationBasedSecurity", v);
+            Registry.SetValue(dg, "RequirePlatformSecurityFeatures", v == 0 ? 0 : 3);
+            Registry.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa", "LsaCfgFlags", v);
+            Run("cmd.exe", "/c bcdedit /set hypervisorlaunchtype " + (v == 0 ? "off" : "auto"));
+            mw.RebootNotify(1);
         }
 
-        private void oldbootloader_Toggled(object sender, RoutedEventArgs e)
-        {
-            if (isLoaded)
-            {
-                switch (oldbootloader.IsOn)
-                {
-                    case true:
-                        Process.Start("cmd.exe", "/c \"bcdedit /set \"{current}\" bootmenupolicy legacy\"");
-                        break;
-                    case false:
-                        Process.Start("cmd.exe", "/c \"bcdedit /set \"{current}\" bootmenupolicy standard\"");
-                        break;
-                }
-            }
-        }
+        private void oldbootloader_Toggled(object sender, RoutedEventArgs e) => Run("cmd.exe", $"/c bcdedit /set \"{{current}}\" bootmenupolicy {(oldbootloader.IsOn ? "legacy" : "standard")}");
 
-        private void advancedboot_Toggled(object sender, RoutedEventArgs e)
-        {
-            if (isLoaded)
-            {
-                switch (advancedboot.IsOn)
-                {
-                    case true:
-                        Process.Start("cmd.exe", "/c \"bcdedit /set \"{globalsettings}\" advancedoptions true\"");
-                        break;
-                    case false:
-                        Process.Start("cmd.exe", "/c \"bcdedit /set \"{globalsettings}\" advancedoptions false\"");
-                        break;
-                }
-            }
-        }
+        private void advancedboot_Toggled(object sender, RoutedEventArgs e) => Run("cmd.exe", $"/c bcdedit /set \"{{globalsettings}}\" advancedoptions {(advancedboot.IsOn ? "true" : "false")}");
 
         private void chkdsk_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (chkdsk.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager").SetValue("AutoChkTimeout", 60);
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager").SetValue("AutoChkTimeout", 8);
-                        break;
-                }
-            }
+            if (isLoaded) Registry.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager", "AutoChkTimeout", chkdsk.IsOn ? 60 : 8);
         }
 
         private void bitlocker_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (bitlocker.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\BitLocker").SetValue("PreventDeviceEncryption", 1, RegistryValueKind.DWord);
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\BitLocker").SetValue("PreventDeviceEncryption", 0, RegistryValueKind.DWord);
-                        break;
-                }
-            }
+            if (isLoaded) Registry.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\BitLocker", "PreventDeviceEncryption", bitlocker.IsOn ? 1 : 0, RegistryValueKind.DWord);
         }
 
         private void telemetry_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
+            if (!isLoaded) return;
+
+            int v = telemetry.IsOn ? 0 : 1;
+            string[] keys = [@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Policies\DataCollection", @"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection"];
+            foreach (var k in keys)
             {
-                switch (telemetry.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Policies\DataCollection").SetValue("AllowTelemetry", 0);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection").SetValue("AllowTelemetry", 0);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection").SetValue("MaxTelemetryAllowed", 0);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Software Protection Platform").SetValue("NoGenTicket", 1);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection").SetValue("DoNotShowFeedbackNotifications", 1);
-
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("AITEnable", 0);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("AllowTelemetry", 0);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("DisableEngine", 1);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("DisableInventory", 1);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("DisablePCA", 1);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("DisableUAR", 1);
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Policies\DataCollection").SetValue("AllowTelemetry", 1);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection").SetValue("AllowTelemetry", 1);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection").SetValue("MaxTelemetryAllowed", 1);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Software Protection Platform").SetValue("NoGenTicket", 0);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection").SetValue("DoNotShowFeedbackNotifications", 0);
-
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("AITEnable", 1);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("AllowTelemetry", 1);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("DisableEngine", 0);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("DisableInventory", 0);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("DisablePCA", 0);
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\AppCompat").SetValue("DisableUAR", 0);
-                        break;
-                }
+                Registry.SetValue("HKEY_LOCAL_MACHINE\\" + k, "AllowTelemetry", v);
+                Registry.SetValue("HKEY_LOCAL_MACHINE\\" + k, "MaxTelemetryAllowed", v);
             }
+            Registry.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\AppCompat", "AllowTelemetry", v);
         }
 
         private void swap_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
-            {
-                switch (swap.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management").SetValue("PagingFiles", new string[] { }, RegistryValueKind.MultiString);
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management").SetValue("PagingFiles", new string[] { @"?:\pagefile.sys" }, RegistryValueKind.MultiString);
-                        break;
-                }
-                mw.RebootNotify(1);
-            }
+            if (!isLoaded) return;
+
+            string[] val = swap.IsOn ? Array.Empty<string>() : new[] { @"?:\pagefile.sys" };
+            Registry.SetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "PagingFiles", val, RegistryValueKind.MultiString);
+            mw.RebootNotify(1);
         }
     }
 }

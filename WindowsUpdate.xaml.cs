@@ -2,349 +2,219 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using MakuTweakerNew.Properties;
 using Microsoft.Win32;
-using Windows.UI.Composition.Desktop;
-using static System.Runtime.InteropServices.Marshalling.IIUnknownCacheStrategy;
 
 namespace MakuTweakerNew
 {
-    public partial class WindowsUpdate : Page
+    public partial class WindowsUpdate : System.Windows.Controls.Page
     {
-        bool isLoaded = false;
-        MainWindow mw = (MainWindow)Application.Current.MainWindow;
+        private bool isLoaded = false;
+        private readonly MainWindow mw = (MainWindow)Application.Current.MainWindow;
+        private readonly string[] versions = { "1607", "1709", "1809", "1909", "2004", "20H2", "21H2", "22H2", "23H2", "24H2", "25H2" };
+
         public WindowsUpdate()
         {
             InitializeComponent();
             checkReg();
+
+            int build = WinHelper.GetWindowsBuild();
+
             if (wu4.SelectedIndex == -1)
             {
-                int currentBuild = checkWinVer();
-                if (currentBuild >= 26200) wu4.SelectedIndex = 10;
-                else if (currentBuild >= 26100) wu4.SelectedIndex = 9;
-                else if (currentBuild >= 22631) wu4.SelectedIndex = 8;
-                else if (currentBuild >= 22621 || currentBuild == 19045) wu4.SelectedIndex = 7;
-                else if (currentBuild >= 22000 || currentBuild == 19044) wu4.SelectedIndex = 6;
-                else if (currentBuild == 19042) wu4.SelectedIndex = 5;
-                else if (currentBuild == 19041) wu4.SelectedIndex = 4;
-                else if (currentBuild == 18363) wu4.SelectedIndex = 3;
-                else if (currentBuild == 17763) wu4.SelectedIndex = 2;
-                else if (currentBuild == 16299) wu4.SelectedIndex = 1;
-                else wu4.SelectedIndex = 0;
+                wu4.SelectedIndex = build switch
+                {
+                    >= 26200 => 10,
+                    >= 26100 => 9,
+                    >= 22631 => 8,
+                    >= 22621 or 19045 => 7,
+                    >= 22000 or 19044 => 6,
+                    19042 => 5,
+                    19041 => 4,
+                    18363 => 3,
+                    17763 => 2,
+                    16299 => 1,
+                    _ => 0
+                };
             }
-            var build = checkWinVer();
 
-            var rules = new (Func<int, bool> Condition, UIElement Element)[]
+            var rules = new (Func<int, bool> Cond, UIElement El)[]
             {
-                (b => b > 14393, u1607),
-                (b => b > 16299, u1709),
-                (b => b > 17763, u1809),
-                (b => b > 18363, u1909),
-                (b => b > 19041, u2004),
-                (b => b > 19042, u20H2),
+                (b => b > 14393, u1607), (b => b > 16299, u1709), (b => b > 17763, u1809),
+                (b => b > 18363, u1909), (b => b > 19041, u2004), (b => b > 19042, u20H2),
                 (b => (b > 19044 && b < 22000) || b > 22000, u21H2),
                 (b => (b > 19045 && b < 22621) || b > 22621, u22H2),
-                (b => b > 22631, u23H2),
-                (b => b > 26100, u24H2),
+                (b => b > 22631, u23H2), (b => b > 26100, u24H2)
             };
 
-            foreach (var (condition, element) in rules)
+            foreach (var r in rules)
             {
-                if (condition(build))
+                if (r.Cond(build))
                 {
-                    element.Visibility = Visibility.Collapsed;
-                    element.IsEnabled = false;
+                    r.El.Visibility = Visibility.Collapsed;
+                    r.El.IsEnabled = false;
                 }
             }
 
-            LoadLang("ilovemakutweaker");
+            LoadLang("");
             isLoaded = true;
         }
 
-        private void RunCmdCommand(string fileName, string arguments)
+        private void Run(string file, string args)
         {
-            using (Process p = new Process())
+            try
             {
-                p.StartInfo.FileName = fileName;
-                p.StartInfo.Arguments = arguments;
-                p.StartInfo.CreateNoWindow = true;
-                p.StartInfo.UseShellExecute = false;
-                p.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-                p.Start();
-                p.WaitForExit();
+                Process.Start(new ProcessStartInfo(file, args)
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                })?.WaitForExit();
             }
+            catch { }
         }
 
         private void ToggleSwitch_Toggled(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
+            if (!isLoaded) return;
+
+            string wuPath = @"HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate";
+            string auPath = wuPath + @"\AU";
+            string svc = @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\";
+
+            if (wu1.IsOn)
             {
-                switch (wu1.IsOn)
-                {
-                    case true:
-                        try
-                        {
-                            var wuKey = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate");
-                            wuKey.SetValue("DoNotConnectToWindowsUpdateInternetLocations", 1, RegistryValueKind.DWord);
-                            wuKey.SetValue("DisableWindowsUpdateAccess", 1, RegistryValueKind.DWord);
-                            wuKey.SetValue("DisableDualScan", 1, RegistryValueKind.DWord);
-                            Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU").SetValue("NoAutoUpdate", 1, RegistryValueKind.DWord);
-                            try
-                            {
-                                Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\wuauserv").SetValue("Start", 4);
-                                Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\UsoSvc").SetValue("Start", 4);
-                                Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\WaaSMedicSvc").SetValue("Start", 4);
-                            }
-                            catch { }
-                            RunCmdCommand("schtasks", "/change /tn \"\\Microsoft\\Windows\\WindowsUpdate\\Scheduled Start\" /disable");
-                            RunCmdCommand("schtasks", "/change /tn \"\\Microsoft\\Windows\\UpdateOrchestrator\\Universal Orchestrator Start\" /disable");
-                            RunCmdCommand("cmd.exe", "/c \"echo 127.0.0.1 index.wp.microsoft.com >> %windir%\\system32\\drivers\\etc\\hosts\"");
-                            RunCmdCommand("cmd.exe", "/c \"echo 127.0.0.1 update.microsoft.com >> %windir%\\system32\\drivers\\etc\\hosts\"");
-                            RunCmdCommand("cmd.exe", "/c \"echo 127.0.0.1 slscr.update.microsoft.com >> %windir%\\system32\\drivers\\etc\\hosts\"");
-                            RunCmdCommand("cmd.exe", "/c \"echo 127.0.0.1 fe2.update.microsoft.com >> %windir%\\system32\\drivers\\etc\\hosts\"");
-                            try
-                            {
-                                RunCmdCommand("taskkill", "/f /im wuauclt.exe");
-                                RunCmdCommand("taskkill", "/f /im updatenotificationmgr.exe");
-                                RunCmdCommand("net", "stop wuauserv /y");
-                                RunCmdCommand("net", "stop bits /y");
-                                RunCmdCommand("net", "stop UsoSvc /y");
-                            }
-                            catch { }
+                Registry.SetValue(wuPath, "DoNotConnectToWindowsUpdateInternetLocations", 1, RegistryValueKind.DWord);
+                Registry.SetValue(wuPath, "DisableWindowsUpdateAccess", 1, RegistryValueKind.DWord);
+                Registry.SetValue(wuPath, "DisableDualScan", 1, RegistryValueKind.DWord);
+                Registry.SetValue(auPath, "NoAutoUpdate", 1, RegistryValueKind.DWord);
 
-                            RunCmdCommand("cmd.exe", "/c ipconfig /flushdns");
-                            mw.RebootNotify(1);
-                        }
-                        catch { }
-                        break;
+                Registry.SetValue(svc + "wuauserv", "Start", 4, RegistryValueKind.DWord);
+                Registry.SetValue(svc + "UsoSvc", "Start", 4, RegistryValueKind.DWord);
+                Registry.SetValue(svc + "WaaSMedicSvc", "Start", 4, RegistryValueKind.DWord);
 
-                    case false:
-                        try
-                        {
-                            var auKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU", true);
-                            auKey?.SetValue("NoAutoUpdate", 0, RegistryValueKind.DWord);
+                Run("schtasks", "/change /tn \"\\Microsoft\\Windows\\WindowsUpdate\\Scheduled Start\" /disable");
+                Run("schtasks", "/change /tn \"\\Microsoft\\Windows\\UpdateOrchestrator\\Universal Orchestrator Start\" /disable");
 
-                            var wuKeyRestore = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate", true);
-                            if (wuKeyRestore != null)
-                            {
-                                wuKeyRestore.SetValue("DoNotConnectToWindowsUpdateInternetLocations", 0, RegistryValueKind.DWord);
-                                wuKeyRestore.SetValue("DisableWindowsUpdateAccess", 0, RegistryValueKind.DWord);
-                                wuKeyRestore.SetValue("DisableDualScan", 0, RegistryValueKind.DWord);
-                            }
-                            try
-                            {
-                                Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\wuauserv").SetValue("Start", 3);
-                                Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\UsoSvc").SetValue("Start", 2);
-                                Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Services\WaaSMedicSvc").SetValue("Start", 3);
-                                RunCmdCommand("net", "start UsoSvc");
-                            }
-                            catch { }
-                            RunCmdCommand("schtasks", "/change /tn \"\\Microsoft\\Windows\\WindowsUpdate\\Scheduled Start\" /enable");
-                            RunCmdCommand("schtasks", "/change /tn \"\\Microsoft\\Windows\\UpdateOrchestrator\\Universal Orchestrator Start\" /enable");
-                            RunCmdCommand("powershell.exe", "-Command \"(Get-Content $env:windir\\system32\\drivers\\etc\\hosts) | Where-Object { $_ -notmatch 'microsoft.com' } | Set-Content $env:windir\\system32\\drivers\\etc\\hosts\"");
-                            RunCmdCommand("cmd.exe", "/c ipconfig /flushdns");
-                            mw.RebootNotify(1);
-                        }
-                        catch { }
-                        break;
-                }
+                string hosts = "echo 127.0.0.1 index.wp.microsoft.com >> %windir%\\system32\\drivers\\etc\\hosts && " +
+                               "echo 127.0.0.1 update.microsoft.com >> %windir%\\system32\\drivers\\etc\\hosts && " +
+                               "echo 127.0.0.1 slscr.update.microsoft.com >> %windir%\\system32\\drivers\\etc\\hosts && " +
+                               "echo 127.0.0.1 fe2.update.microsoft.com >> %windir%\\system32\\drivers\\etc\\hosts";
+                Run("cmd.exe", $"/c \"{hosts}\"");
+
+                Run("taskkill", "/f /im wuauclt.exe");
+                Run("taskkill", "/f /im updatenotificationmgr.exe");
+                Run("net", "stop wuauserv /y");
+                Run("net", "stop bits /y");
+                Run("net", "stop UsoSvc /y");
             }
+            else
+            {
+                Registry.SetValue(auPath, "NoAutoUpdate", 0, RegistryValueKind.DWord);
+                Registry.SetValue(wuPath, "DoNotConnectToWindowsUpdateInternetLocations", 0, RegistryValueKind.DWord);
+                Registry.SetValue(wuPath, "DisableWindowsUpdateAccess", 0, RegistryValueKind.DWord);
+                Registry.SetValue(wuPath, "DisableDualScan", 0, RegistryValueKind.DWord);
+
+                Registry.SetValue(svc + "wuauserv", "Start", 3, RegistryValueKind.DWord);
+                Registry.SetValue(svc + "UsoSvc", "Start", 2, RegistryValueKind.DWord);
+                Registry.SetValue(svc + "WaaSMedicSvc", "Start", 3, RegistryValueKind.DWord);
+
+                Run("net", "start UsoSvc");
+                Run("schtasks", "/change /tn \"\\Microsoft\\Windows\\WindowsUpdate\\Scheduled Start\" /enable");
+                Run("schtasks", "/change /tn \"\\Microsoft\\Windows\\UpdateOrchestrator\\Universal Orchestrator Start\" /enable");
+                Run(
+                    "powershell.exe",
+                    "-Command \"(Get-Content $env:windir\\system32\\drivers\\etc\\hosts) | Where-Object { $_ -notmatch 'microsoft.com' } | Set-Content $env:windir\\system32\\drivers\\etc\\hosts\""
+                );
+            }
+            Run("cmd.exe", "/c ipconfig /flushdns");
+            mw.RebootNotify(1);
         }
 
         private void ToggleSwitch_Toggled_1(object sender, RoutedEventArgs e)
         {
-            if (isLoaded)
+            if (!isLoaded) return;
+            int v = wu2.IsOn ? 1 : 0;
+            if (wu2.IsOn)
             {
-                switch (wu2.IsOn)
-                {
-                    case true:
-                        try
-                        {
-                            Registry.CurrentUser.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel").SetValue("{20D04FE0-3AEA-1069-A2D8-08002B30309D}", 0);
-                            Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("ExcludeWUDriversInQualityUpdate", 1);
-                        }
-                        catch
-                        {
-
-                        }
-                        break;
-                    case false:
-                        try
-                        {
-                            Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("ExcludeWUDriversInQualityUpdate", 0);
-                        }
-                        catch
-                        {
-
-                        }
-                        break;
-                }
+                Registry.SetValue(@"HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel", "{20D04FE0-3AEA-1069-A2D8-08002B30309D}", 0);
             }
-        }
-
-        private void wu4_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-
-        }
-        private int checkWinVer()
-        {
-            string keyPath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
-            string valueName = "CurrentBuild";
-
-            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(keyPath))
-            {
-                if (key != null)
-                {
-                    object value = key.GetValue(valueName);
-
-                    if (value != null && int.TryParse(value.ToString(), out int build))
-                    {
-                        return build;
-                    }
-                }
-            }
-            return 19045;
+            Registry.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate", "ExcludeWUDriversInQualityUpdate", v, RegistryValueKind.DWord);
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)
         {
-            switch (wu4.SelectedIndex)
-            {
-                case 0:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "1607");
-                    break;
-                case 1:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "1709");
-                    break;
-                case 2:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "1809");
-                    break;
-                case 3:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "1909");
-                    break;
-                case 4:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "2004");
-                    break;
-                case 5:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "20H2");
-                    break;
-                case 6:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "21H2");
-                    break;
-                case 7:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "22H2");
-                    break;
-                case 8:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "23H2");
-                    break;
-                case 9:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "24H2");
-                    break;
-                case 10:
-                    Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate").SetValue("TargetReleaseVersionInfo", "25H2");
-                    break;
+            if (wu4.SelectedIndex >= 0)
+                Registry.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate", "TargetReleaseVersionInfo", versions[wu4.SelectedIndex]);
 
-            }
-            var languageCode = Settings.Default.lang ?? "en";
-            var wul = MainWindow.Localization.LoadLocalization(languageCode, "wu");
+            var wul = MainWindow.Localization.LoadLocalization(Settings.Default.lang ?? "en", "wu");
             mw.ChSt(wul["status"]["wu4"]);
         }
 
         private void pause_Click(object sender, RoutedEventArgs e)
         {
-            try
-            {
-                RunCmdCommand("cmd.exe", "/c \"reg add HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings /v ActiveHoursStart /t REG_DWORD /d 9 /f && reg add HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings /v ActiveHoursEnd /t REG_DWORD /d 2 /f && reg add HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings /v PauseFeatureUpdatesStartTime /t REG_SZ /d \"2015-01-01T00:00:00Z\" /f && reg add HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings /v PauseQualityUpdatesStartTime /t REG_SZ /d \"2015-01-01T00:00:00Z\" /f && reg add HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings /v PauseUpdatesExpiryTime /t REG_SZ /d \"2077-01-01T00:00:00Z\" /f && reg add HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings /v PauseFeatureUpdatesEndTime /t REG_SZ /d \"2077-01-01T00:00:00Z\" /f && reg add HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings /v PauseQualityUpdatesEndTime /t REG_SZ /d \"2077-01-01T00:00:00Z\" /f && reg add HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings /v PauseUpdatesStartTime /t REG_SZ /d \"2015-01-01T00:00:00Z\" /f\"");
-                var languageCode = Settings.Default.lang ?? "en";
-                var wul = MainWindow.Localization.LoadLocalization(languageCode, "wu");
-                pause.IsEnabled = false;
-                mw.ChSt(wul["status"]["wu5"]);
-            }
-            catch { }
+            string path = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings";
+            Registry.SetValue(path, "ActiveHoursStart", 9, RegistryValueKind.DWord);
+            Registry.SetValue(path, "ActiveHoursEnd", 2, RegistryValueKind.DWord);
+
+            string[] keys = ["PauseFeatureUpdatesStartTime", "PauseQualityUpdatesStartTime", "PauseUpdatesStartTime"];
+            foreach (var k in keys)
+                Registry.SetValue(path, k, "2015-01-01T00:00:00Z");
+
+            string[] ends = ["PauseUpdatesExpiryTime", "PauseFeatureUpdatesEndTime", "PauseQualityUpdatesEndTime"];
+            foreach (var k in ends)
+                Registry.SetValue(path, k, "2077-01-01T00:00:00Z");
+
+            pause.IsEnabled = false;
+            mw.ChSt(MainWindow.Localization.LoadLocalization(Settings.Default.lang ?? "en", "wu")["status"]["wu5"]);
         }
 
         private void wu6_Toggled(object sender, RoutedEventArgs e)
         {
             if (isLoaded)
-            {
-                switch (wu6.IsOn)
-                {
-                    case true:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\ReserveManager").SetValue("ShippedWithReserves", 0);
-                        break;
-                    case false:
-                        Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\ReserveManager").SetValue("ShippedWithReserves", 1);
-                        break;
-                }
-            }
+                Registry.SetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\ReserveManager", "ShippedWithReserves", wu6.IsOn ? 0 : 1, RegistryValueKind.DWord);
         }
+
         private void LoadLang(string lang)
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var basel = MainWindow.Localization.LoadLocalization(languageCode, "base");
-            var wu = MainWindow.Localization.LoadLocalization(languageCode, "wu");
-            var sr = MainWindow.Localization.LoadLocalization(languageCode, "sr");
+            var code = Settings.Default.lang ?? "en";
+            var wu = MainWindow.Localization.LoadLocalization(code, "wu")["main"];
+            var b = MainWindow.Localization.LoadLocalization(code, "base")["def"];
+            var sr = MainWindow.Localization.LoadLocalization(code, "sr")["main"];
 
-            wu1.Header = wu["main"]["wu1"];
-            wu2.Header = wu["main"]["wu3"];
-            wu6.Header = wu["main"]["wu6"];
-            pausel.Text = wu["main"]["wu5"];
-            blockL.Text = wu["main"]["wu2"];
-            l7.Text = wu["main"]["wu4"];
-            pause.Content = wu["main"]["wu5b"];
-            block.Content = wu["main"]["wu6b"];
-            wupd.Content = sr["main"]["b4"];
+            wu1.Header = wu["wu1"]; wu2.Header = wu["wu3"]; wu6.Header = wu["wu6"];
+            pausel.Text = wu["wu5"]; blockL.Text = wu["wu2"]; l7.Text = wu["wu4"];
+            pause.Content = wu["wu5b"]; block.Content = wu["wu6b"]; wupd.Content = sr["b4"];
 
-            wu1.OffContent = basel["def"]["off"];
-            wu2.OffContent = basel["def"]["off"];
-            wu6.OffContent = basel["def"]["off"];
-
-            wu1.OnContent = basel["def"]["on"];
-            wu2.OnContent = basel["def"]["on"];
-            wu6.OnContent = basel["def"]["on"];
+            foreach (var s in new[] { wu1, wu2, wu6 })
+            {
+                s.OffContent = b["off"];
+                s.OnContent = b["on"];
+            }
         }
+
         private void checkReg()
         {
-            wu1.IsOn = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU")?.GetValue("NoAutoUpdate")?.Equals(1) ?? false;
-            wu2.IsOn = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")?.GetValue("ExcludeWUDriversInQualityUpdate")?.Equals(1) ?? false;
-            wu6.IsOn = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\ReserveManager")?.GetValue("ShippedWithReserves")?.Equals(0) ?? false;
+            var LM = Registry.LocalMachine;
+            wu1.IsOn = LM.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU")?.GetValue("NoAutoUpdate")?.Equals(1) ?? false;
+            wu2.IsOn = LM.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")?.GetValue("ExcludeWUDriversInQualityUpdate")?.Equals(1) ?? false;
+            wu6.IsOn = LM.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\ReserveManager")?.GetValue("ShippedWithReserves")?.Equals(0) ?? false;
 
-            string targetVersion = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")?.GetValue("TargetReleaseVersionInfo")?.ToString();
-            switch (targetVersion)
-            {
-                case "1607": wu4.SelectedIndex = 0; break;
-                case "1709": wu4.SelectedIndex = 1; break;
-                case "1809": wu4.SelectedIndex = 2; break;
-                case "1909": wu4.SelectedIndex = 3; break;
-                case "2004": wu4.SelectedIndex = 4; break;
-                case "20H2": wu4.SelectedIndex = 5; break;
-                case "21H2": wu4.SelectedIndex = 6; break;
-                case "22H2": wu4.SelectedIndex = 7; break;
-                case "23H2": wu4.SelectedIndex = 8; break;
-                case "24H2": wu4.SelectedIndex = 9; break;
-                case "25H2": wu4.SelectedIndex = 10; break;
-                default: wu4.SelectedIndex = -1; break;
-            }
+            string ver = LM.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate")?.GetValue("TargetReleaseVersionInfo")?.ToString() ?? "";
+            wu4.SelectedIndex = Array.IndexOf(versions, ver);
 
-            string pauseTime = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\WindowsUpdate\UX\Settings")?.GetValue("PauseUpdatesExpiryTime")?.ToString();
-            pause.IsEnabled = string.IsNullOrEmpty(pauseTime) || !pauseTime.Contains("2077");
-            wupd.IsEnabled = true;
+            string pt = LM.OpenSubKey(@"SOFTWARE\Microsoft\WindowsUpdate\UX\Settings")?.GetValue("PauseUpdatesExpiryTime")?.ToString() ?? "";
+            pause.IsEnabled = !pt.Contains("2077");
         }
+
         private void wupd_Click(object sender, RoutedEventArgs e)
         {
-            RunCmdCommand("cmd.exe", "/c del /f /s /q %windir%\\SoftwareDistribution\\Download\\*");
+            Run("cmd.exe", "/c del /f /s /q %windir%\\SoftwareDistribution\\Download\\*");
             wupd.IsEnabled = false;
         }
+
+        private void wu4_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
     }
 }

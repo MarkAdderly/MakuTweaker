@@ -1,46 +1,47 @@
 ﻿using MakuTweakerNew.Properties;
-using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Net.Http;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Windows.Threading;
-using Windows.UI.Composition.Desktop;
-using static System.Runtime.InteropServices.Marshalling.IIUnknownCacheStrategy;
 
 namespace MakuTweakerNew
 {
     public class ProcessItem
     {
         public int Id { get; set; }
-        public string Name { get; set; }
-        public string MemoryUsage { get; set; }
-        public override string ToString()
-        {
-            return $"{Name} ({MemoryUsage})";
-        }
+        public string Name { get; set; } = string.Empty;
+        public string MemoryUsage { get; set; } = "0 MB";
+        public override string ToString() => $"{Name} ({MemoryUsage})";
     }
+
     public partial class ProcessMGR : Page
     {
-        private DispatcherTimer _timer;
-        private long _dynamicMemoryThreshold = 524288000;
-        bool isLoaded = false;
+        private DispatcherTimer? _timer;
+        private long _threshold = 524288000;
+        private readonly bool isLoaded = false;
         private bool helpVisible = false;
-        MainWindow mw = (MainWindow)Application.Current.MainWindow;
+
+        private static readonly HashSet<string> Excluded = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "dwm", "msedgewebview2", "startmenuexperiencehost", "taskmgr", "explorer", "system", "idle", "dllhost",
+            "smss", "csrss", "wininit", "services", "lsass", "winlogon", "svchost", "fontdrvhost", "sihost",
+            "shellexperiencehost", "ctfmon", "runtimebroker", "searchindexer", "searchapp", "wpfsurface",
+            "searchhost", "phoneexperiencehost", "textinputhost", "nvidia overlay", "vscodium", "lockapp",
+            "shellhost", "systemsettings", "crossdeviceresume", "applicationframehost", "searchui", "gamebar",
+            "xboxgamebarwidgets", "xboxpcappft", "icloudservices","nvdisplay.container", "widgets",
+            "xboxgamebarspotify", "backgroundtaskhost", "perfwatson2", "msbuild", "crossdeviceservice",
+            "bioenrollmenthost", "acergaicameraw", "vmtoolsd", "onedrive", "onedrive.sync.service", "igcctray",
+            "igcc", "microsoft.cmdpal.ui", "makutweaker", "msedge", "nvcontainer", "sharex", "everything",
+            "firefox", "chrome", "discord"
+        };
+
         public ProcessMGR()
         {
             InitializeComponent();
@@ -50,120 +51,59 @@ namespace MakuTweakerNew
 
         private void Page_Loaded(object sender, RoutedEventArgs e)
         {
-            _timer = new DispatcherTimer();
-            _timer.Interval = TimeSpan.FromSeconds(1);
-            _timer.Tick += Timer_Tick;
-
+            _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _timer.Tick += (s, ev) => RefreshProcessList();
             RefreshProcessList();
             _timer.Start();
         }
 
-        private void Page_Unloaded(object sender, RoutedEventArgs e)
-        {
-            if (_timer != null)
-            {
-                _timer.Stop();
-                _timer.Tick -= Timer_Tick;
-            }
-        }
-
-        private void Timer_Tick(object sender, EventArgs e)
-        {
-            RefreshProcessList();
-        }
+        private void Page_Unloaded(object sender, RoutedEventArgs e) => _timer?.Stop();
 
         private void RefreshProcessList()
         {
-            try
-            {
-                var excludedNames = new[] { "dwm", "msedgewebview2", "startmenuexperiencehost", "taskmgr", "explorer", "system", "idle", "dllhost", "smss", "csrss", "wininit", "services", "lsass", "winlogon", "svchost", "fontdrvhost", "sihost", "shellexperiencehost", "ctfmon", "runtimebroker", "searchindexer", "searchapp", "wpfsurface", "searchhost", "phoneexperiencehost", "textinputhost", "nvidia overlay", "vscodium", "lockapp", "shellhost", "systemsettings", "crossdeviceresume", "applicationframehost", "searchui", "gamebar", "xboxgamebarwidgets", "xboxpcappft", "icloudservices","nvdisplay.container", "widgets", "xboxgamebarspotify", "backgroundtaskhost", "perfwatson2", "msbuild", "crossdeviceservice", "bioenrollmenthost", "acergaicameraw", "vmtoolsd", "onedrive", "onedrive.sync.service", "igcctray", "igcc", "microsoft.cmdpal.ui",
-"makutweaker", "msedge", "nvcontainer", "sharex", "everything", "firefox", "chrome", "discord"};
+            int? selectedId = (ProcessListView.SelectedItem as ProcessItem)?.Id;
+            bool onlyHung = OnlyNotRespondingCheck.IsChecked == true;
 
-                int? selectedId = null;
-                Dispatcher.Invoke(() =>
+            if (MemoryLimitCombo.SelectedItem is ComboBoxItem item && item.Tag != null)
+                _threshold = long.Parse(item.Tag.ToString()!);
+
+            var heavy = Process.GetProcesses()
+                .Where(p =>
                 {
-                    if (ProcessListView.SelectedItem is ProcessItem selected)
+                    try
                     {
-                        selectedId = selected.Id;
+                        if (p.Id <= 4 || p.SessionId == 0) return false;
+                        if (Excluded.Contains(p.ProcessName)) return false;
+                        if (p.WorkingSet64 <= _threshold) return false;
+                        return !onlyHung || !p.Responding;
                     }
-
-                    if (MemoryLimitCombo?.SelectedItem is ComboBoxItem comboItem)
-                    {
-                        _dynamicMemoryThreshold = long.Parse(comboItem.Tag.ToString());
-                    }
-                });
-
-                bool showOnlyHung = false;
-                Dispatcher.Invoke(() => showOnlyHung = OnlyNotRespondingCheck.IsChecked ?? false);
-
-                var allProcesses = Process.GetProcesses();
-
-                var heavyProcesses = allProcesses
-                    .Where(p =>
-                    {
-                        try
-                        {
-                            if (p.Id <= 4 || p.SessionId == 0) return false;
-                            if (excludedNames.Contains(p.ProcessName.ToLower())) return false;
-                            if (p.WorkingSet64 <= _dynamicMemoryThreshold) return false;
-                            if (showOnlyHung && p.Responding) return false;
-
-                            return true;
-                        }
-                        catch
-                        {
-                            return false;
-                        }
-                    })
-                    .OrderByDescending(p => p.WorkingSet64)
-                    .Select(p => new ProcessItem
-                    {
-                        Id = p.Id,
-                        Name = p.ProcessName,
-                        MemoryUsage = $"{Math.Round(p.WorkingSet64 / 1024.0 / 1024.0, 2)} MB"
-                    })
-                    .ToList();
-
-                Dispatcher.Invoke(() =>
+                    catch { return false; }
+                })
+                .OrderByDescending(p => p.WorkingSet64)
+                .Select(p => new ProcessItem
                 {
-                    ProcessListView.ItemsSource = heavyProcesses;
+                    Id = p.Id,
+                    Name = p.ProcessName,
+                    MemoryUsage = p.WorkingSet64 >= 1073741824
+                        ? $"{p.WorkingSet64 / 1073741824.0:F1} GB"
+                        : $"{p.WorkingSet64 / 1048576.0:F1} MB"
+                }).ToList();
 
-                    if (selectedId.HasValue)
-                    {
-                        var itemToSelect = heavyProcesses.FirstOrDefault(x => x.Id == selectedId.Value);
-                        if (itemToSelect != null)
-                        {
-                            ProcessListView.SelectedItem = itemToSelect;
-                            ProcessListView.Focus();
-                            Keyboard.Focus(ProcessListView);
-                        }
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"{ex.Message}");
-            }
+            ProcessListView.ItemsSource = heavy;
+            if (selectedId.HasValue)
+                ProcessListView.SelectedItem = heavy.FirstOrDefault(x => x.Id == selectedId);
         }
 
         private void KillProcess_Click(object sender, RoutedEventArgs e)
         {
-            if (ProcessListView.SelectedItem is ProcessItem selected)
+            if (ProcessListView.SelectedItem is not ProcessItem selected) return;
+            try
             {
-                try
-                {
-                    var processesToKill = Process.GetProcessesByName(selected.Name);
-                    foreach (var proc in processesToKill)
-                    {
-                        try { proc.Kill(); } catch { }
-                    }
-                    Task.Delay(150).ContinueWith(_ => Dispatcher.Invoke(() => RefreshProcessList()));
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(ex.Message, "MakuTweaker Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
+                foreach (var p in Process.GetProcessesByName(selected.Name))
+                    try { p.Kill(); } catch { }
+                RefreshProcessList();
             }
+            catch (Exception ex) { MessageBox.Show(ex.Message, "Error"); }
         }
 
         private void FilterChanged(object sender, RoutedEventArgs e)
@@ -173,89 +113,56 @@ namespace MakuTweakerNew
 
         private void ProcessListView_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Delete && ProcessListView.SelectedItem != null)
-            {
-                KillProcess_Click(sender, e);
-            }
+            if (e.Key == Key.Delete) KillProcess_Click(sender, e);
         }
 
         private void LoadLang()
         {
-            var languageCode = Properties.Settings.Default.lang ?? "en";
-            var pmgr = MainWindow.Localization.LoadLocalization(languageCode, "pmgr");
-            var tooltips = MainWindow.Localization.LoadLocalization(languageCode, "tooltips");
+            var lang = Settings.Default.lang ?? "en";
+            var m = MainWindow.Localization.LoadLocalization(lang, "pmgr")["main"];
+            var t = MainWindow.Localization.LoadLocalization(lang, "tooltips")["main"];
 
-            mgr_tooltip.Content = tooltips["main"]["MakuTweakerProcessMGR1"];
-            label.Text = pmgr["main"]["label"];
-            if (KillBtn != null) KillBtn.Content = pmgr["main"]["endprocess"];
-            if (OnlyNotRespondingCheck != null) OnlyNotRespondingCheck.Content = pmgr["main"]["onlyfrozen"];
+            mgr_tooltip.Content = t["MakuTweakerProcessMGR1"];
+            label.Text = m["label"];
+            KillBtn.Content = m["endprocess"];
+            OnlyNotRespondingCheck.Content = m["onlyfrozen"];
 
-            if (MemoryLimitCombo != null && MemoryLimitCombo.Items.Count >= 5)
+            string[] keys = { "from50mb", "from100mb", "from300mb", "from500mb", "from1000mb", "from2000mb" };
+            for (int i = 0; i < keys.Length; i++)
+                if (MemoryLimitCombo.Items[i] is ComboBoxItem item) item.Content = m[keys[i]];
+
+            if (ProcessListView.Resources["ItemContextMenu"] is ItemsControl menu && menu.Items.Count >= 2)
             {
-                string[] keys = { "from50mb", "from100mb", "from300mb", "from500mb", "from1000mb", "from2000mb" };
-                for (int i = 0; i < keys.Length; i++)
-                {
-                    if (MemoryLimitCombo.Items[i] is ComboBoxItem item)
-                    {
-                        item.Content = pmgr["main"][keys[i]];
-                    }
-                }
-            }
-
-            var contextMenu = ProcessListView.Resources["ItemContextMenu"] as System.Windows.Controls.ContextMenu;
-            if (contextMenu != null)
-            {
-                var items = (contextMenu as System.Windows.Controls.ItemsControl).Items;
-
-                if (items.Count >= 2)
-                {
-                    if (items[0] is System.Windows.Controls.MenuItem itemKill)
-                        itemKill.Header = pmgr["main"]["endprocess"];
-
-                    if (items[1] is System.Windows.Controls.MenuItem itemLoc)
-                        itemLoc.Header = pmgr["main"]["location"];
-                }
+                ((MenuItem)menu.Items[0]).Header = m["endprocess"];
+                ((MenuItem)menu.Items[1]).Header = m["location"];
             }
         }
 
         private void OpenLocation_Click(object sender, RoutedEventArgs e)
         {
-            if (ProcessListView.SelectedItem is ProcessItem selected)
+            if (ProcessListView.SelectedItem is not ProcessItem s) return;
+            try
             {
-                try
-                {
-                    var proc = Process.GetProcessById(selected.Id);
-                    string filePath = proc.MainModule.FileName;
-                    Process.Start("explorer.exe", $"/select, \"{filePath}\"");
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(ex.Message, "MakuTweaker Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
+                string? path = Process.GetProcessById(s.Id).MainModule?.FileName;
+                if (!string.IsNullOrEmpty(path)) Process.Start("explorer.exe", $"/select, \"{path}\"");
             }
+            catch (Exception ex) { MessageBox.Show(ex.Message, "Error"); }
         }
 
         private async void InfoBtn_Click(object sender, RoutedEventArgs e)
         {
             buttontooltip.IsEnabled = false;
-
             helpVisible = !helpVisible;
 
             if (helpVisible)
             {
-                var languageCode = Properties.Settings.Default.lang ?? "en";
-                var tooltips = MainWindow.Localization.LoadLocalization(languageCode, "tooltips");
-
-                HelpText.Text = tooltips["main"]["MakuTweakerProcessMGR"];
-
-                AnimatePages(true);
-
+                HelpText.Text = MainWindow.Localization.LoadLocalization(Settings.Default.lang ?? "en", "tooltips")["main"]["MakuTweakerProcessMGR"];
+                Animate(true);
                 buttontooltip.Content = "←";
             }
             else
             {
-                AnimatePages(false);
-
+                Animate(false);
                 buttontooltip.Content = "?";
             }
 
@@ -263,89 +170,37 @@ namespace MakuTweakerNew
             buttontooltip.IsEnabled = true;
         }
 
-        private void AnimatePages(bool showHelp)
+        private void Animate(bool show)
         {
-            double offset = ContentHost.ActualHeight;
-            double duration = 0.25;
+            double h = ContentHost.ActualHeight;
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
 
-            var ease = new System.Windows.Media.Animation.CubicEase
+            void Start(IAnimatable obj, DependencyProperty prop, double to, double? from = null)
             {
-                EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
-            };
+                var a = new DoubleAnimation { To = to, Duration = TimeSpan.FromSeconds(0.25), EasingFunction = ease };
+                if (from.HasValue) a.From = from.Value;
+                obj.BeginAnimation(prop, a);
+            }
 
-            if (showHelp)
+            if (show)
             {
                 HelpContent.Visibility = Visibility.Visible;
                 MainContent.IsHitTestVisible = false;
-
                 ControlPanel.Visibility = Visibility.Collapsed;
 
-                var mainAnim = new DoubleAnimation
-                {
-                    To = -offset,
-                    Duration = TimeSpan.FromSeconds(duration),
-                    EasingFunction = ease
-                };
-
-                var helpAnim = new DoubleAnimation
-                {
-                    From = offset,
-                    To = 0,
-                    Duration = TimeSpan.FromSeconds(duration),
-                    EasingFunction = ease
-                };
-
-                var fadeOut = new DoubleAnimation
-                {
-                    To = 0,
-                    Duration = TimeSpan.FromSeconds(duration * 0.8),
-                    EasingFunction = ease
-                };
-
-                MainTransform.BeginAnimation(TranslateTransform.YProperty, mainAnim);
-                MainContent.BeginAnimation(UIElement.OpacityProperty, fadeOut);
-
-                HelpTransform.BeginAnimation(TranslateTransform.YProperty, helpAnim);
+                Start(MainTransform, TranslateTransform.YProperty, -h);
+                Start(MainContent, OpacityProperty, 0);
+                Start(HelpTransform, TranslateTransform.YProperty, 0, h);
             }
             else
             {
                 MainContent.IsHitTestVisible = true;
                 ControlPanel.Visibility = Visibility.Visible;
 
-                MainContent.BeginAnimation(UIElement.OpacityProperty, null);
-                MainContent.Opacity = 0;
-
-                var mainAnim = new DoubleAnimation
-                {
-                    To = 0,
-                    Duration = TimeSpan.FromSeconds(duration),
-                    EasingFunction = ease
-                };
-
-                var helpAnim = new DoubleAnimation
-                {
-                    To = offset,
-                    Duration = TimeSpan.FromSeconds(duration),
-                    EasingFunction = ease
-                };
-
-                helpAnim.Completed += (s, e) =>
-                {
-                    HelpContent.Visibility = Visibility.Collapsed;
-
-                    var fadeIn = new DoubleAnimation
-                    {
-                        From = 0,
-                        To = 1,
-                        Duration = TimeSpan.FromSeconds(0.25),
-                        EasingFunction = ease
-                    };
-
-                    MainContent.BeginAnimation(UIElement.OpacityProperty, fadeIn);
-                };
-
-                MainTransform.BeginAnimation(TranslateTransform.YProperty, mainAnim);
-                HelpTransform.BeginAnimation(TranslateTransform.YProperty, helpAnim);
+                Start(MainTransform, TranslateTransform.YProperty, 0);
+                var anim = new DoubleAnimation(h, TimeSpan.FromSeconds(0.25)) { EasingFunction = ease };
+                anim.Completed += (s, e) => { HelpContent.Visibility = Visibility.Collapsed; Start(MainContent, OpacityProperty, 1, 0); };
+                HelpTransform.BeginAnimation(TranslateTransform.YProperty, anim);
             }
         }
     }

@@ -23,7 +23,6 @@ namespace MakuTweakerNew
 {
     public partial class SAT : Page
     {
-        bool isLoaded = false;
         public SAT()
         {
             InitializeComponent();
@@ -33,7 +32,6 @@ namespace MakuTweakerNew
             int number;
             int.TryParse(mins.Text, out number);
             hours.Text = satl["main"]["minho"] + Math.Round((double)number / 60, 2);
-            isLoaded = true;
         }
 
         private void TextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)

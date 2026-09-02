@@ -25,10 +25,13 @@ namespace MakuTweakerNew
     {
         private MainWindow mw = (MainWindow)System.Windows.Application.Current.MainWindow;
         bool isLoaded = false;
+        bool isPatchInProgress = false;
+        bool isStatusUpdating = false;
         public Explorer()
         {
             InitializeComponent();
             checkReg();
+            CheckListPaddingStatus();
             if (checkWinVer() >= 22621)
             {
                 nonremovable.Visibility = Visibility.Collapsed;
@@ -116,6 +119,8 @@ namespace MakuTweakerNew
             checkboxes.Header = expl["main"]["checkboxes"];
             recdocs.Header = expl["main"]["recdocs"];
             confirmdel.Header = expl["main"]["confirmdel"];
+            listpadding.Header = expl["main"]["listpadding"];
+            listpadding.ToolTip = expl["main"]["listpadding_tooltip"];
 
             foreach (var toggle in AllToggles)
             {
@@ -136,7 +141,8 @@ namespace MakuTweakerNew
             quickfreq,
             recdocs,
             checkboxes,
-            confirmdel
+            confirmdel,
+            listpadding
         };
         private void checkReg()
         {
@@ -407,6 +413,99 @@ namespace MakuTweakerNew
                 Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer")
                     .SetValue("ConfirmFileDelete", confirmdel.IsOn ? 1 : 0);
                 mw.RebootNotify(2);
+            }
+        }
+        private async void CheckListPaddingStatus()
+        {
+            if (!ExplorerListPaddingPatcher.IsWindows11Supported())
+            {
+                listpadding.IsEnabled = false;
+                return;
+            }
+
+            isStatusUpdating = true;
+            bool patched = await ExplorerListPaddingPatcher.IsPatchedAsync();
+            listpadding.IsOn = patched;
+            isStatusUpdating = false;
+        }
+
+        private async void listpadding_Toggled(object sender, RoutedEventArgs eventArgs)
+        {
+            if (!isLoaded || isPatchInProgress || isStatusUpdating)
+            {
+                return;
+            }
+
+            isPatchInProgress = true;
+            listpadding.IsEnabled = false;
+
+            try
+            {
+                var languageCode = Properties.Settings.Default.lang ?? "en";
+                var expl = MainWindow.Localization.LoadLocalization(languageCode, "expl");
+
+                if (listpadding.IsOn)
+                {
+                    string confirmMessage = string.Format(
+                        expl["status"]["listpadding_confirm"],
+                        ExplorerListPaddingPatcher.BackupFolderPath);
+
+                    var confirmResult = iNKORE.UI.WPF.Modern.Controls.MessageBox.Show(
+                        confirmMessage,
+                        "MakuTweaker",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning);
+
+                    if (confirmResult != MessageBoxResult.Yes)
+                    {
+                        listpadding.IsOn = false;
+                        return;
+                    }
+
+                    ExplorerListPaddingPatcher.PatchResult patchResult = await ExplorerListPaddingPatcher.ApplyPatchAsync();
+                    bool nowPatched = await ExplorerListPaddingPatcher.IsPatchedAsync();
+
+                    if (patchResult.Success)
+                    {
+                        iNKORE.UI.WPF.Modern.Controls.MessageBox.Show(patchResult.Message, "MakuTweaker", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else if (nowPatched)
+                    {
+                        iNKORE.UI.WPF.Modern.Controls.MessageBox.Show(expl["status"]["listpadding_already"], "MakuTweaker", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        iNKORE.UI.WPF.Modern.Controls.MessageBox.Show(patchResult.Message, "MakuTweaker", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        listpadding.IsOn = false;
+                    }
+                }
+                else
+                {
+                    if (!ExplorerListPaddingPatcher.HasBackups())
+                    {
+                        iNKORE.UI.WPF.Modern.Controls.MessageBox.Show(expl["status"]["listpadding_nobackup"], "MakuTweaker", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        listpadding.IsOn = true;
+                        return;
+                    }
+
+                    ExplorerListPaddingPatcher.PatchResult patchResult = await ExplorerListPaddingPatcher.RevertPatchAsync();
+                    bool nowPatched = await ExplorerListPaddingPatcher.IsPatchedAsync();
+
+                    if (!nowPatched)
+                    {
+                        iNKORE.UI.WPF.Modern.Controls.MessageBox.Show(patchResult.Message, "MakuTweaker", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        iNKORE.UI.WPF.Modern.Controls.MessageBox.Show(patchResult.Message, "MakuTweaker", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        listpadding.IsOn = true;
+                    }
+                }
+            }
+            finally
+            {
+                listpadding.IsEnabled = true;
+                isPatchInProgress = false;
             }
         }
     }

@@ -22,31 +22,36 @@
             }
         },
         "expl": {
-            "main": {
-                "label": "Explorer & Desktop",
-                "nonremovable": "Hide Non-Removable Library Folders",
-                "hidden": "Show Hidden Files and Folders",
-                "ext": "Show File Extensions",
-                "pchome": "Open The \"This PC\" Page in Explorer Instead of \"Home\"",
-                "gallery": "Hide The \"Gallery\" Section",
-                "showpc": "Show \"This PC\"",
-                "shortcut": "Remove The \"-Shortcut\" Ending From New Shortcuts",
-                "fixlabel": "Fix Duplicate Drives in Explorer",
-                "quickfreq": "Hide Frequently Used Folders in Quick Access",
-                "checkboxes": "Use Check Boxes to Select Items",
-                "recdocs": "Disable Recent Documents History",
-                "confirmdel": "Show a Confirmation Dialog When Deleting Files",
-                "e8b": "Fix",
-                "driveslabel": "Hide Drive Letters in This PC",
-                "choose": "Choose",
-                "showall": "Show All"
-            },
-            "status": {
-                "hdInfo1": "Choose The Drive Letters You Want To Hide.",
-                "hdInfo2": "Note that The Drive Can Still Be Accessed by Entering The Drive Letter and a Colon in The Explorer Address Bar.",
-                "hide": "Hide Selected Letters",
-                "cc": "Cancel"
-            }
+          "main": {
+            "label": "Explorer & Desktop",
+            "nonremovable": "Hide Non-Removable Library Folders",
+            "hidden": "Show Hidden Files and Folders",
+            "ext": "Show File Extensions",
+            "pchome": "Open The \"This PC\" Page in Explorer Instead of \"Home\"",
+            "gallery": "Hide The \"Gallery\" Section",
+            "showpc": "Show \"This PC\"",
+            "shortcut": "Remove The \"-Shortcut\" Ending From New Shortcuts",
+            "fixlabel": "Fix Duplicate Drives in Explorer",
+            "quickfreq": "Hide Frequently Used Folders in Quick Access",
+            "checkboxes": "Use Check Boxes to Select Items",
+            "recdocs": "Disable Recent Documents History",
+            "confirmdel": "Show a Confirmation Dialog When Deleting Files",
+            "e8b": "Fix",
+            "driveslabel": "Hide Drive Letters in This PC",
+            "choose": "Choose",
+            "showall": "Show All",
+            "listpadding": "Fix List View Padding in Explorer",
+            "listpadding_tooltip": "Reduces the large left padding of Explorer items in List view."
+          },
+          "status": {
+            "hdInfo1": "Choose The Drive Letters You Want To Hide.",
+            "hdInfo2": "Note that The Drive Can Still Be Accessed by Entering The Drive Letter and a Colon in The Explorer Address Bar.",
+            "hide": "Hide Selected Letters",
+            "cc": "Cancel",
+            "listpadding_confirm": "This tweak modifies the Windows system file ExplorerFrame.dll.mun. A backup of the original file will be created in the folder:\n{0}\nYou can restore the original file at any time by switching this toggle off. You apply this change at your own risk. Continue?",
+            "listpadding_already": "The system file is already patched, the tweak is already applied.",
+            "listpadding_nobackup": "Rollback is not possible: there is no backup of the original file. A backup is created in the program folder when the tweak is applied."
+          }
         },
         "compon": {
             "main": {

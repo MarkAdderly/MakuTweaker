@@ -25,6 +25,7 @@
                 <ui:ToggleSwitch Toggled="recdocs_Toggled" x:Name="recdocs" Header="Disable Recent Documents History" Margin="24,7,0,0" VerticalAlignment="Top" FontSize="18"/>
                 <ui:ToggleSwitch Toggled="checkboxes_Toggled" x:Name="checkboxes" Header="Use Check Boxes to Select Items" Margin="24,7,0,0" VerticalAlignment="Top" FontSize="18"/>
                 <ui:ToggleSwitch Toggled="confirmdel_Toggled" x:Name="confirmdel" Header="Show a Confirmation Dialog When Deleting Files" Margin="24,7,0,0" VerticalAlignment="Top" FontSize="18"/>
+                <ui:ToggleSwitch Toggled="listpadding_Toggled" x:Name="listpadding" Header="Fix List View Padding in Explorer List Mode" Margin="24,7,0,0" VerticalAlignment="Top" FontSize="18"/>
 
 
                 <TextBlock x:Name="driveslabel" HorizontalAlignment="Left" Margin="24,7,0,0" TextWrapping="Wrap" Text="Hide Drives in This PC" VerticalAlignment="Top" FontSize="18"/>

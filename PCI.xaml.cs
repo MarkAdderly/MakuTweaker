@@ -2045,37 +2045,89 @@ namespace MakuTweakerNew
             }
             return devices;
         }
-
         private static string DetectDiskType(string name, string mediaType, string deviceId)
         {
             try
             {
                 string idx = new string(deviceId.Where(char.IsDigit).ToArray());
+
                 if (!string.IsNullOrEmpty(idx))
                 {
-                    using var ps = new ManagementObjectSearcher(@"root\Microsoft\Windows\Storage",
+                    using var ps = new ManagementObjectSearcher(
+                        @"root\Microsoft\Windows\Storage",
                         $"SELECT BusType, MediaType FROM MSFT_PhysicalDisk WHERE DeviceId='{idx}'");
+
                     foreach (ManagementObject obj in ps.Get())
                     {
                         int busType = Convert.ToInt32(obj["BusType"]);
                         int mt = Convert.ToInt32(obj["MediaType"]);
-                        if (busType == 14) return "SD";
-                        if (busType == 17 || mt == 5) return "NVMe SSD";
-                        if (busType == 8) return "USB";
-                        if (mt == 4) return "SATA SSD";
+
+                        // типы шин Windows: RAID = 8, USB = 7, NVMe = 17, SAS = 10, SCSI = 1, IDE = 2/3, SATA = 11, SD = 12/13, Virtual Disk = 14, Storage Spaces = 16
+                        switch (busType)
+                        {
+                            case 8:  return "RAID";
+                            case 17: return "NVMe SSD";
+                            case 10: return "SAS";
+                            case 1:  return "SCSI";
+
+                            case 2:
+                            case 3:
+                                return mt == 4 ? "IDE SSD" : "IDE HDD";
+
+                            case 11:
+                                return mt == 4 ? "SATA SSD" : "SATA HDD";
+
+                            case 7:  return "USB";
+
+                            case 12:
+                            case 13:
+                                return "SD";
+
+                            case 14: return "Virtual Disk";
+                            case 16: return "Storage Spaces";
+                        }
+
+                        if (mt == 5) return "NVMe SSD";
+                        if (mt == 4) return "SSD";
                         if (mt == 3) return "HDD";
                     }
                 }
             }
             catch { }
 
-            string n = (name + " " + mediaType).ToLowerInvariant();
-            if (n.Contains("sd") || n.Contains("sdcard")) return "SD";
+            // fallback если система не вернула bustype
+            string n = $"{name} {mediaType} {deviceId}".ToLowerInvariant();
+
+            if (n.Contains("raid") ||
+                n.Contains("adaptec") ||
+                n.Contains("aacraid") ||
+                n.Contains("megaraid") ||
+                n.Contains("smart array") ||
+                n.Contains("perc") ||
+                n.Contains("lsi") ||
+                n.Contains("broadcom") ||
+                n.Contains("areca") ||
+                n.Contains("3ware"))
+                return "RAID";
+
             if (n.Contains("nvme")) return "NVMe SSD";
-            if (n.Contains("ssd") || n.Contains("solid")) return "SATA SSD";
+            if (n.Contains("sas")) return "SAS";
+            if (n.Contains("scsi")) return "SCSI";
+            if (n.Contains("ide") || n.Contains("atapi") || n.Contains(" ata")) return "IDE";
+            if (n.Contains("sd card") || n.Contains("sdcard") || n.Contains("mmc")) return "SD";
+            if (n.Contains("storage spaces") ||
+                n.Contains("storage space") ||
+                n.Contains("microsoft storage space"))
+                return "Storage Spaces";
+
             if (n.Contains("usb")) return "USB";
-            if (n.Contains("hdd") || n.Contains("hard disk") || mediaType.Contains("Fixed hard disk", StringComparison.OrdinalIgnoreCase))
+            if (n.Contains("ssd") || n.Contains("solid")) return "SSD";
+
+            if (n.Contains("hdd") ||
+                n.Contains("hard disk") ||
+                (mediaType?.Contains("Fixed hard disk", StringComparison.OrdinalIgnoreCase) ?? false))
                 return "HDD";
+
             return "";
         }
 
